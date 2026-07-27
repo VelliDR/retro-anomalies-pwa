@@ -1,11 +1,13 @@
-const CACHE_NAME = 'app-v1';
+const CACHE_NAME = 'anomalies-v1';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png'
-  // Varsa CSS, JS veya statik font dosyalarını da buraya ekleyebilirsin
+  './',
+  './index.html',
+  './manifest.json',
+  './css/main.css',
+  './js/app.js',
+  './js/heic2any.min.js',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 // Service Worker Kurulumu & Önbelleğe Alma
