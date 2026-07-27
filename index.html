@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#000000">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Anomalies // Retro Media Lab</title>
+    <link rel="stylesheet" href="css/main.css">
+    
+    <!-- Yerel HEIC Kütüphanesi ve Ana Modül -->
+    <script src="js/heic2any.min.js"></script>
+    <script type="module" src="js/app.js"></script>
+</head>
+<body>
+
+    <header class="app-header">
+        <div class="logo">
+            <span class="badge">v1.0</span>
+            <h1>ANOMALIES</h1>
+        </div>
+        <p class="subtitle">Çevrimdışı Retro & Glitch Medya Laboratuvarı</p>
+    </header>
+
+    <main class="app-container">
+        <!-- CANVAS GÖRÜNTÜLEME ALANI -->
+        <section class="viewport-section">
+            <div id="drop-zone" class="canvas-wrapper">
+                <canvas id="mainCanvas"></canvas>
+                <div id="placeholder" class="upload-placeholder">
+                    <div class="icon">📷</div>
+                    <p>Fotoğraf Yüklemek İçin Dokunun veya Sürükleyin</p>
+                    <small>JPG, PNG, WEBP, HEIC desteklenir (Tüm işlemler yereldir)</small>
+                </div>
+            </div>
+            <input type="file" id="fileInput" accept="image/*,.heic,.heif" hidden>
+        </section>
+
+        <!-- KONTROL VE SEÇENEK PANETİ -->
+        <section class="controls-section">
+            <!-- MOTOR PRESET BAR -->
+            <div class="engine-selector-wrapper">
+                <label class="section-label">EFEKT MOTORU</label>
+                <div class="engine-scroll-bar" id="engineBar">
+                    <button class="engine-btn active" data-engine="pixelart">👾 Pixel Art</button>
+                    <button class="engine-btn" data-engine="thermalpaper">🧾 Market Fişi</button>
+                    <button class="engine-btn" data-engine="ascii">💻 ASCII Matrix</button>
+                    <button class="engine-btn" data-engine="crttv">📺 CRT TV</button>
+                    <button class="engine-btn" data-engine="flir">🌡️ Termal Görüş</button>
+                    <button class="engine-btn" data-engine="cmyk">🖨️ CMYK Matbaa</button>
+                    <button class="engine-btn" data-engine="fanzine">📄 Kötü Fotokopi</button>
+                    <button class="engine-btn" data-engine="colorclash">📼 Color Clash</button>
+                    <button class="engine-btn" data-engine="glitch">💾 Datamosh</button>
+                    <button class="engine-btn" data-engine="textglitch">🔤 Glitch Tipografi</button>
+                </div>
+            </div>
+
+            <!-- DİNAMİK PARAMETRE AYARLARI -->
+            <div class="params-card" id="paramsContainer">
+                <p class="empty-state">İşlem yapmak için bir fotoğraf yükleyin.</p>
+            </div>
+
+            <!-- EYLEM BUTONLARI -->
+            <div class="action-bar">
+                <button id="btnUpload" class="btn btn-secondary">📁 Fotoğraf Seç</button>
+                <button id="btnDownload" class="btn btn-primary" disabled>💾 PNG İndir</button>
+            </div>
+        </section>
+    </main>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then((reg) => console.log('Service Worker kayıt başarılı:', reg.scope))
+        .catch((err) => console.error('Service Worker kaydı başarısız:', err));
+    });
+  }
+</script>
+</body>
+</html>
