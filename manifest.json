@@ -1,11 +1,12 @@
 {
-  "name": "Uygulama Adı",
-  "short_name": "Uygulama",
-  "description": "PWA Uygulama Açıklaması",
-  "start_url": "/",
+  "name": "ANOMALIES",
+  "short_name": "Anomalies",
+  "description": "Retro & Glitch Medya Laboratuvarı",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "background_color": "#121212",
+  "theme_color": "#121212",
   "orientation": "portrait",
   "icons": [
     {
