@@ -1,26 +1,11 @@
-const CACHE_NAME = 'anomalies-v2-vangogh';
+const CACHE_NAME = 'app-v1';
 const ASSETS_TO_CACHE = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icon-192.png',
-  './icon-512.png',
-  './css/main.css',
-  './js/heic2any.min.js',
-  './js/app.js',
-  './js/core/ImageLoader.js',
-  './js/core/CanvasPool.js',
-  './js/engines/PixelArtEngine.js',
-  './js/engines/ThermalPaperEngine.js',
-  './js/engines/AsciiMatrixEngine.js',
-  './js/engines/CrtTvEngine.js',
-  './js/engines/FlirThermalEngine.js',
-  './js/engines/CmykOffsetEngine.js',
-  './js/engines/PunkFanzineEngine.js',
-  './js/engines/ColorClashEngine.js',
-  './js/engines/GlitchEngine.js',
-  './js/engines/TextGlitchEngine.js',
-  './js/engines/VanGoghEngine.js'
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png'
+  // Varsa CSS, JS veya statik font dosyalarını da buraya ekleyebilirsin
 ];
 
 // Service Worker Kurulumu & Önbelleğe Alma
