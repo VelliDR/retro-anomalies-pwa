@@ -1,14 +1,14 @@
 /**
  * @file VanGoghEngine.js
- * @description Anomalies Retro Medya Laboratuvarı için Ağır Vektör-Akışlı & Tensör Alanlı Van Gogh Motoru.
- * Streamline Integration, Multi-Bristle Wet Painting ve Structure Tensor Smoothing içerir.
+ * @description Anomalies Retro Medya Laboratuvarı için Çözünürlükten Bağımsız (Resolution-Independent) Van Gogh Motoru.
+ * ImageLoader referans oranına (1200px) tam uyumlu, dinamik ölçekli fırça ve vektör-akış mimarisi.
  */
 
 import { canvasPool } from '../core/CanvasPool.js';
 
 export class VanGoghEngine {
     constructor() {
-        // Permütasyon Tablosu (Perlin Noise için)
+        // Permütasyon Tablosu (Perlin Noise)
         this.p = new Int32Array(512);
         const perm = [
             151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,
@@ -31,12 +31,18 @@ export class VanGoghEngine {
     }
 
     /**
-     * @param {HTMLCanvasElement} sourceCanvas
-     * @param {number} mode - 1: Anatomik Akış (Structure Tensor), 2: Yıldızlı Gece Türbülansı, 3: Ekspresyonist Kaos
+     * @param {HTMLCanvasElement} sourceCanvas - Kaynak tuval (Full veya Preview)
+     * @param {number} mode - 1: Anatomik Akış (Structure Tensor), 2: Yıldızlı Gece Girdap, 3: Ekspresyonist Kaos
+     * @returns {HTMLCanvasElement}
      */
     render(sourceCanvas, mode = 1) {
         const width = sourceCanvas.width;
         const height = sourceCanvas.height;
+
+        // ImageLoader previewMaxDim (1200px) referansına göre dinamik ölçek hesabı
+        const maxDim = Math.max(width, height);
+        const referenceDim = 1200;
+        const scale = maxDim / referenceDim;
 
         const targetCanvas = canvasPool.getCanvas('vangogh_output', width, height);
         const targetCtx = targetCanvas.getContext('2d');
@@ -45,46 +51,46 @@ export class VanGoghEngine {
         const imgData = srcCtx.getImageData(0, 0, width, height);
         const pixels = imgData.data;
 
-        // 1. ASTAR KATMANI (Underpainting)
+        // 1. ASTAR KATMANI (Blur miktarı çözünürlükle doğru orantılı büyür)
         targetCtx.save();
-        targetCtx.filter = 'blur(12px) saturate(140%) contrast(110%)';
+        targetCtx.filter = `blur(${Math.round(12 * scale)}px) saturate(140%) contrast(110%)`;
         targetCtx.drawImage(sourceCanvas, 0, 0, width, height);
         targetCtx.restore();
 
-        // 2. YÜKSEK KALİTELİ TENSÖR VE AKIŞ HARİTASI HESABI
-        const tensorField = this.computePaddedStructureTensor(pixels, width, height);
+        // 2. ÖLÇEKLENMİŞ TENSÖR ALANI (Yumuşatmayı çözünürlüğe oranlar)
+        const tensorField = this.computePaddedStructureTensor(pixels, width, height, scale);
 
-        // 3. KATMAN: KÜTLEŞEL GENİŞ FIRÇALAR (Coarse Mass Pass)
-        this.renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, {
-            density: 0.015,     // Tohum yoğunluğu
-            stepLength: 4.0,    // Her adımda ilerleme (px)
-            maxSteps: 12,       // Uzun fırça yolları
-            bristleCount: 6,    // Fırça kılı sayısı
-            brushWidth: 6.0,    // Fırça genişliği
+        // 3. KATMAN: KÜTLEŞEL GENİŞ FIRÇALAR (Coarse Mass)
+        this.renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, scale, {
+            density: 0.015,
+            stepLength: 4.0 * scale,
+            maxSteps: 12,
+            bristleCount: 6,
+            brushWidth: 6.0 * scale,
             alpha: 0.55,
             turbulence: 0.12,
             impasto: false
         });
 
-        // 4. KATMAN: ANA ANATOMİK VE TEKSTÜREL FIRÇALAR (Primary Impasto Pass)
-        this.renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, {
-            density: 0.045,     // Daha yoğun tohumlama
-            stepLength: 3.0,
+        // 4. KATMAN: ANA ANATOMİK FIRÇALAR (Primary Impasto)
+        this.renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, scale, {
+            density: 0.045,
+            stepLength: 3.0 * scale,
             maxSteps: 10,
             bristleCount: 8,
-            brushWidth: 3.2,
+            brushWidth: 3.2 * scale,
             alpha: 0.90,
             turbulence: 0.22,
             impasto: true
         });
 
-        // 5. KATMAN: DETAY VE VURGU HIGHLIGHTLARI (Detail Specular Pass)
-        this.renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, {
+        // 5. KATMAN: DETAY VE VURGU HIGHLIGHTLARI
+        this.renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, scale, {
             density: 0.02,
-            stepLength: 2.0,
+            stepLength: 2.0 * scale,
             maxSteps: 6,
             bristleCount: 4,
-            brushWidth: 1.8,
+            brushWidth: 1.8 * scale,
             alpha: 0.95,
             turbulence: 0.08,
             impasto: true,
@@ -95,20 +101,16 @@ export class VanGoghEngine {
     }
 
     /**
-     * Yumuşatılmış Structure Tensor Alanı Oluşturur (Görselin Organik Akış Vektörleri)
+     * Yumuşatılmış Structure Tensor Alanı (Yumuşatma yarıçapı scale ile genişletilir)
      */
-    computePaddedStructureTensor(pixels, width, height) {
+    computePaddedStructureTensor(pixels, width, height, scale) {
         const size = width * height;
         const Jxx = new Float32Array(size);
         const Jyy = new Float32Array(size);
         const Jxy = new Float32Array(size);
 
-        // A. Sobel Gradyanları
         for (let y = 1; y < height - 1; y++) {
             for (let x = 1; x < width - 1; x++) {
-                const idx = (y * width + x) * 4;
-
-                // Parlaklık (Luminance)
                 const l00 = pixels[((y - 1) * width + (x - 1)) * 4] * 0.299;
                 const l10 = pixels[((y - 1) * width + x) * 4] * 0.299;
                 const l20 = pixels[((y - 1) * width + (x + 1)) * 4] * 0.299;
@@ -128,17 +130,18 @@ export class VanGoghEngine {
             }
         }
 
-        // B. Tensör Alanını Yumuşatma (Gürültülü kırılmaları engeller, pürüzsüz akış sağlar)
         const angles = new Float32Array(size);
         const coherence = new Float32Array(size);
 
-        const radius = 3;
-        for (let y = radius; y < height - radius; y++) {
-            for (let x = radius; x < width - radius; x++) {
+        // Radius scale katsayısı ile oranlanır
+        const radius = Math.max(1, Math.round(3 * scale));
+
+        for (let y = radius; y < height - radius; y += Math.max(1, Math.floor(scale / 2))) {
+            for (let x = radius; x < width - radius; x += Math.max(1, Math.floor(scale / 2))) {
                 let sxx = 0, syy = 0, sxy = 0;
 
-                for (let dy = -radius; dy <= radius; dy++) {
-                    for (let dx = -radius; dx <= radius; dx++) {
+                for (let dy = -radius; dy <= radius; dy += Math.max(1, Math.floor(scale))) {
+                    for (let dx = -radius; dx <= radius; dx += Math.max(1, Math.floor(scale))) {
                         const nIdx = (y + dy) * width + (x + dx);
                         sxx += Jxx[nIdx];
                         syy += Jyy[nIdx];
@@ -147,10 +150,8 @@ export class VanGoghEngine {
                 }
 
                 const iIdx = y * width + x;
-                // Kenara teğet açı (Tangent orientation)
                 angles[iIdx] = 0.5 * Math.atan2(2 * sxy, sxx - syy) + (Math.PI / 2);
-                
-                // Koherans (Kenar belirginliği/gücü)
+
                 const num = (sxx - syy) * (sxx - syy) + 4 * sxy * sxy;
                 const den = (sxx + syy) * (sxx + syy) + 1e-5;
                 coherence[iIdx] = Math.sqrt(num) / den;
@@ -161,10 +162,12 @@ export class VanGoghEngine {
     }
 
     /**
-     * Akış Çizgisi Katmanı: Parçacıkları vektör alanında sürükleyerek fırça izleri oluşturur
+     * Akış Çizgisi Katmanı
      */
-    renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, config) {
-        const totalSeeds = Math.floor(width * height * config.density);
+    renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, scale, config) {
+        // Tohum sayısı referans alana (1200px bazı) göre hesaplanır, böylece fırça sıklığı korunur
+        const referenceArea = (width / scale) * (height / scale);
+        const totalSeeds = Math.floor(referenceArea * config.density);
 
         for (let i = 0; i < totalSeeds; i++) {
             let rx = Math.random() * width;
@@ -180,23 +183,20 @@ export class VanGoghEngine {
 
             const hsl = this.rgbToHsl(r, g, b);
 
-            // Sadece vurgu katmanı ise koyu alanları atla
             if (config.highlightOnly && hsl.l < 0.6) continue;
 
-            // Parçacık yolunu (Streamline) hesapla
-            const pathPoints = this.traceStreamline(rx, ry, width, height, tensorField, mode, config);
+            const pathPoints = this.traceStreamline(rx, ry, width, height, tensorField, mode, scale, config);
 
             if (pathPoints.length < 2) continue;
 
-            // Çok Kıllı (Multi-Bristle) Fırça Darbesini Tuvale Çiz
-            this.drawMultiBristleStroke(targetCtx, pathPoints, hsl, config);
+            this.drawMultiBristleStroke(targetCtx, pathPoints, hsl, scale, config);
         }
     }
 
     /**
-     * Runge-Kutta 2. Derece Entegrasyonu ile Parçacık Yolu İzleme
+     * Parçacık İlerleme Analizi (Noise frekansı scale ile bölünür)
      */
-    traceStreamline(startX, startY, width, height, tensorField, mode, config) {
+    traceStreamline(startX, startY, width, height, tensorField, mode, scale, config) {
         const points = [{ x: startX, y: startY }];
         let currX = startX;
         let currY = startY;
@@ -208,21 +208,19 @@ export class VanGoghEngine {
             let baseAngle = tensorField.angles[idx] || 0;
             const coh = tensorField.coherence[idx] || 0;
 
-            // Mod Varyasyonları ve Perlin Türbülansı
-            const noise = this.noise2D(currX * 0.003, currY * 0.003);
-            
+            // Noise frekansını ölçekleme: Koordinatları scale'e bölerek bağımsızlaştırıyoruz
+            const noiseX = (currX / scale) * 0.003;
+            const noiseY = (currY / scale) * 0.003;
+            const noise = this.noise2D(noiseX, noiseY);
+
             if (mode === 2) {
-                // Yıldızlı Gece Girdap Modu
                 baseAngle += noise * Math.PI * 1.5;
             } else if (mode === 3) {
-                // Ekspresyonist Dikey Akış
                 baseAngle = (baseAngle * coh) + ((Math.PI / 2 + noise * 0.5) * (1 - coh));
             } else {
-                // Mod 1: Anatomik İtaat + Yumuşak Türbülans
                 baseAngle += (noise - 0.5) * config.turbulence * (1.2 - coh);
             }
 
-            // Step (Euler/RK2 İlerleme)
             const vx = Math.cos(baseAngle) * config.stepLength;
             const vy = Math.sin(baseAngle) * config.stepLength;
 
@@ -236,33 +234,28 @@ export class VanGoghEngine {
     }
 
     /**
-     * Islak Fırça & Çoklu Kıl (Multi-Bristle) Boyama Simülasyonu
+     * Çoklu Kıl Fırça Darbesi (Impasto ve fırça offsetleri scale ile oranlanır)
      */
-    drawMultiBristleStroke(ctx, points, baseHsl, config) {
+    drawMultiBristleStroke(ctx, points, baseHsl, scale, config) {
         ctx.save();
 
         const bristleCount = config.bristleCount;
-        const halfWidth = config.brushWidth / 2;
-
-        // Fırçanın merkez rengi ve gölge/ışık tonları
         const primarySat = Math.min(100, Math.round(baseHsl.s * 125));
         const primaryLum = Math.round(baseHsl.l * 100);
 
         for (let b = 0; b < bristleCount; b++) {
-            // Fırça ucundaki kılların dikey offset'i
             const offsetFactor = (b / (bristleCount - 1) - 0.5) * config.brushWidth;
-            
-            // Kıl bazında mikro renk dalgalanması (Wet-on-wet etkisi)
+
             const bristleLumShift = (Math.random() - 0.5) * 12;
             const bristleHueShift = (Math.random() - 0.5) * 8;
-            
+
             const bristleHue = (baseHsl.h + bristleHueShift + 360) % 360;
             const bristleLum = Math.max(0, Math.min(100, primaryLum + bristleLumShift));
-            
+
             const bristleColor = `hsla(${Math.round(bristleHue)}, ${primarySat}%, ${Math.round(bristleLum)}%, ${config.alpha})`;
 
             ctx.strokeStyle = bristleColor;
-            ctx.lineWidth = Math.max(0.6, config.brushWidth / bristleCount * 1.2);
+            ctx.lineWidth = Math.max(0.6 * scale, config.brushWidth / bristleCount * 1.2);
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
 
@@ -271,7 +264,6 @@ export class VanGoghEngine {
             for (let i = 0; i < points.length; i++) {
                 const pt = points[i];
 
-                // Normal vektörü (Çizgiye dik açı)
                 let nx = 0, ny = 0;
                 if (i < points.length - 1) {
                     const nextPt = points[i + 1];
@@ -294,17 +286,17 @@ export class VanGoghEngine {
             ctx.stroke();
         }
 
-        // 3D Impasto Kabartması (Işık Kırılması)
+        // Impasto ışık offset'i çözünürlüğe göre genişletilir
         if (config.impasto) {
             ctx.strokeStyle = `rgba(255, 255, 255, ${config.alpha * 0.35})`;
-            ctx.lineWidth = Math.max(0.5, config.brushWidth * 0.2);
+            ctx.lineWidth = Math.max(0.5 * scale, config.brushWidth * 0.2);
             ctx.beginPath();
 
+            const offsetPx = 0.8 * scale;
             for (let i = 0; i < points.length; i++) {
                 const pt = points[i];
-                // Hafifçe sol-üst ışık açısına kaydırma (-1px, -1px)
-                if (i === 0) ctx.moveTo(pt.x - 0.8, pt.y - 0.8);
-                else ctx.lineTo(pt.x - 0.8, pt.y - 0.8);
+                if (i === 0) ctx.moveTo(pt.x - offsetPx, pt.y - offsetPx);
+                else ctx.lineTo(pt.x - offsetPx, pt.y - offsetPx);
             }
             ctx.stroke();
         }
@@ -312,7 +304,7 @@ export class VanGoghEngine {
         ctx.restore();
     }
 
-    // --- PERLIN NOISE MATEMATİĞİ ---
+    // --- PERLIN NOISE & MATEMATİK ---
     fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
     lerp(t, a, b) { return a + t * (b - a); }
     grad(hash, x, y) {
