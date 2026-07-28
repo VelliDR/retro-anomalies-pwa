@@ -1,14 +1,14 @@
 /**
  * @file VanGoghEngine.js
- * @description Anomalies Retro Medya Laboratuvarı için Makro Vektör Akışlı & Gravür Tipi Van Gogh Motoru.
- * Uzun, kesintisiz Bezier eğrileri ve makro akış haritası ile optik dokuma estetiği.
+ * @description Anomalies Retro Medya Laboratuvarı için Ağır Vektör-Akışlı & Tensör Alanlı Van Gogh Motoru.
+ * Streamline Integration, Multi-Bristle Wet Painting ve Structure Tensor Smoothing içerir.
  */
 
 import { canvasPool } from '../core/CanvasPool.js';
 
 export class VanGoghEngine {
     constructor() {
-        // Düşük frekanslı makro akışlar için hafif Perlin tablosu
+        // Permütasyon Tablosu (Perlin Noise için)
         this.p = new Int32Array(512);
         const perm = [
             151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,
@@ -30,7 +30,11 @@ export class VanGoghEngine {
         }
     }
 
-    render(sourceCanvas, mode = 1, stepSize = 10, brushMinLength = 16, brushMaxLength = 36, impasto = true) {
+    /**
+     * @param {HTMLCanvasElement} sourceCanvas
+     * @param {number} mode - 1: Anatomik Akış (Structure Tensor), 2: Yıldızlı Gece Türbülansı, 3: Ekspresyonist Kaos
+     */
+    render(sourceCanvas, mode = 1) {
         const width = sourceCanvas.width;
         const height = sourceCanvas.height;
 
@@ -41,127 +45,274 @@ export class VanGoghEngine {
         const imgData = srcCtx.getImageData(0, 0, width, height);
         const pixels = imgData.data;
 
-        // ASTAR KATMANI: Siyah boşluk yerine yumuşatılmış orijinal renkler
+        // 1. ASTAR KATMANI (Underpainting)
         targetCtx.save();
-        targetCtx.filter = 'blur(10px) saturate(125%)';
+        targetCtx.filter = 'blur(12px) saturate(140%) contrast(110%)';
         targetCtx.drawImage(sourceCanvas, 0, 0, width, height);
         targetCtx.restore();
 
-        // 1. KATMAN: Zemin Doku - Geniş ve Uzun Süpürme Çizgileri
-        this.drawPass(targetCtx, pixels, width, height, mode, {
-            step: Math.max(6, Math.round(stepSize * 1.3)),
-            minLen: brushMinLength * 1.2,
-            maxLen: brushMaxLength * 1.2,
-            lineWidth: 4,
-            alpha: 0.65,
+        // 2. YÜKSEK KALİTELİ TENSÖR VE AKIŞ HARİTASI HESABI
+        const tensorField = this.computePaddedStructureTensor(pixels, width, height);
+
+        // 3. KATMAN: KÜTLEŞEL GENİŞ FIRÇALAR (Coarse Mass Pass)
+        this.renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, {
+            density: 0.015,     // Tohum yoğunluğu
+            stepLength: 4.0,    // Her adımda ilerleme (px)
+            maxSteps: 12,       // Uzun fırça yolları
+            bristleCount: 6,    // Fırça kılı sayısı
+            brushWidth: 6.0,    // Fırça genişliği
+            alpha: 0.55,
+            turbulence: 0.12,
             impasto: false
         });
 
-        // 2. KATMAN: Ana Vektörel Gravür Katmanı (Uzun ve Kesintisiz Hatlar)
-        this.drawPass(targetCtx, pixels, width, height, mode, {
-            step: Math.max(3, stepSize),
-            minLen: brushMinLength,
-            maxLen: brushMaxLength,
-            lineWidth: 2.8,
+        // 4. KATMAN: ANA ANATOMİK VE TEKSTÜREL FIRÇALAR (Primary Impasto Pass)
+        this.renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, {
+            density: 0.045,     // Daha yoğun tohumlama
+            stepLength: 3.0,
+            maxSteps: 10,
+            bristleCount: 8,
+            brushWidth: 3.2,
+            alpha: 0.90,
+            turbulence: 0.22,
+            impasto: true
+        });
+
+        // 5. KATMAN: DETAY VE VURGU HIGHLIGHTLARI (Detail Specular Pass)
+        this.renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, {
+            density: 0.02,
+            stepLength: 2.0,
+            maxSteps: 6,
+            bristleCount: 4,
+            brushWidth: 1.8,
             alpha: 0.95,
-            impasto: impasto
+            turbulence: 0.08,
+            impasto: true,
+            highlightOnly: true
         });
 
         return targetCanvas;
     }
 
-    drawPass(targetCtx, pixels, width, height, mode, config) {
-        const centerX = width / 2;
-        const centerY = height / 2;
+    /**
+     * Yumuşatılmış Structure Tensor Alanı Oluşturur (Görselin Organik Akış Vektörleri)
+     */
+    computePaddedStructureTensor(pixels, width, height) {
+        const size = width * height;
+        const Jxx = new Float32Array(size);
+        const Jyy = new Float32Array(size);
+        const Jxy = new Float32Array(size);
 
-        for (let y = 0; y < height; y += config.step) {
-            for (let x = 0; x < width; x += config.step) {
-                const i = (y * width + x) * 4;
-                const r = pixels[i];
-                const g = pixels[i + 1];
-                const b = pixels[i + 2];
-                const a = pixels[i + 3] / 255;
+        // A. Sobel Gradyanları
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                const idx = (y * width + x) * 4;
 
-                if (a < 0.1) continue;
+                // Parlaklık (Luminance)
+                const l00 = pixels[((y - 1) * width + (x - 1)) * 4] * 0.299;
+                const l10 = pixels[((y - 1) * width + x) * 4] * 0.299;
+                const l20 = pixels[((y - 1) * width + (x + 1)) * 4] * 0.299;
+                const l01 = pixels[(y * width + (x - 1)) * 4] * 0.299;
+                const l21 = pixels[(y * width + (x + 1)) * 4] * 0.299;
+                const l02 = pixels[((y + 1) * width + (x - 1)) * 4] * 0.299;
+                const l12 = pixels[((y + 1) * width + x) * 4] * 0.299;
+                const l22 = pixels[((y + 1) * width + (x + 1)) * 4] * 0.299;
 
-                // AÇI HESABI: Yüksek frekanslı mikro kırılmalar tamamen kaldırıldı
-                const angle = this.calculateMacroAngle(x, y, width, height, centerX, centerY, mode);
-                
-                // KISALMAYAN UZUN ÇİZGİLER (Tüy/Kıymık oluşumunu engeller)
-                const strokeLen = config.minLen + Math.random() * (config.maxLen - config.minLen);
+                const gx = (l20 + 2 * l21 + l22) - (l00 + 2 * l01 + l02);
+                const gy = (l02 + 2 * l12 + l22) - (l00 + 2 * l10 + l20);
 
-                const hsl = this.rgbToHsl(r, g, b);
-                hsl.s = Math.min(1, hsl.s * 1.2);
-
-                const mainColor = `hsla(${hsl.h}, ${Math.round(hsl.s * 100)}%, ${Math.round(hsl.l * 100)}%, ${config.alpha})`;
-
-                // Gölge Rengi: Orijinal rengin kendi koyu tonu
-                const shadowLightness = Math.max(0.05, hsl.l * 0.45);
-                const shadowColor = `hsla(${hsl.h}, ${Math.round(hsl.s * 100)}%, ${Math.round(shadowLightness * 100)}%, ${config.alpha * 0.8})`;
-
-                this.drawContinuousStroke(targetCtx, x, y, strokeLen, angle, shadowColor, mainColor, config.lineWidth, config.impasto);
+                const iIdx = y * width + x;
+                Jxx[iIdx] = gx * gx;
+                Jyy[iIdx] = gy * gy;
+                Jxy[iIdx] = gx * gy;
             }
         }
+
+        // B. Tensör Alanını Yumuşatma (Gürültülü kırılmaları engeller, pürüzsüz akış sağlar)
+        const angles = new Float32Array(size);
+        const coherence = new Float32Array(size);
+
+        const radius = 3;
+        for (let y = radius; y < height - radius; y++) {
+            for (let x = radius; x < width - radius; x++) {
+                let sxx = 0, syy = 0, sxy = 0;
+
+                for (let dy = -radius; dy <= radius; dy++) {
+                    for (let dx = -radius; dx <= radius; dx++) {
+                        const nIdx = (y + dy) * width + (x + dx);
+                        sxx += Jxx[nIdx];
+                        syy += Jyy[nIdx];
+                        sxy += Jxy[nIdx];
+                    }
+                }
+
+                const iIdx = y * width + x;
+                // Kenara teğet açı (Tangent orientation)
+                angles[iIdx] = 0.5 * Math.atan2(2 * sxy, sxx - syy) + (Math.PI / 2);
+                
+                // Koherans (Kenar belirginliği/gücü)
+                const num = (sxx - syy) * (sxx - syy) + 4 * sxy * sxy;
+                const den = (sxx + syy) * (sxx + syy) + 1e-5;
+                coherence[iIdx] = Math.sqrt(num) / den;
+            }
+        }
+
+        return { angles, coherence };
     }
 
-    calculateMacroAngle(x, y, width, height, centerX, centerY, mode) {
-        if (mode === 1) {
-            // MOD 1: Akıcı Makro Nehir (Geniş alanlı pürüzsüz dalga)
-            const n1 = this.noise2D(x * 0.0015, y * 0.0015);
-            const n2 = this.noise2D(y * 0.002, x * 0.002);
-            return (n1 * Math.PI) + (n2 * 0.5);
-        } else if (mode === 2) {
-            // MOD 2: Manyetik Merkez & Ritmik Topoğrafi
-            const dx = x - centerX;
-            const dy = y - centerY;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            const baseAngle = Math.atan2(dy, dx) + (Math.PI / 2);
-            const wave = Math.sin(dist * 0.02 + x * 0.005) * 0.25;
-            return baseAngle + wave;
-        } else {
-            // MOD 3: Çapraz Dokuma / Banknot Çizgileri
-            const normY = y / height;
-            const wave = Math.sin((x + y) * 0.01) * 0.2;
-            return (Math.PI / 4) + wave + (normY * 0.1);
+    /**
+     * Akış Çizgisi Katmanı: Parçacıkları vektör alanında sürükleyerek fırça izleri oluşturur
+     */
+    renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, config) {
+        const totalSeeds = Math.floor(width * height * config.density);
+
+        for (let i = 0; i < totalSeeds; i++) {
+            let rx = Math.random() * width;
+            let ry = Math.random() * height;
+
+            const pIdx = (Math.floor(ry) * width + Math.floor(rx)) * 4;
+            const r = pixels[pIdx];
+            const g = pixels[pIdx + 1];
+            const b = pixels[pIdx + 2];
+            const a = pixels[pIdx + 3] / 255;
+
+            if (a < 0.1) continue;
+
+            const hsl = this.rgbToHsl(r, g, b);
+
+            // Sadece vurgu katmanı ise koyu alanları atla
+            if (config.highlightOnly && hsl.l < 0.6) continue;
+
+            // Parçacık yolunu (Streamline) hesapla
+            const pathPoints = this.traceStreamline(rx, ry, width, height, tensorField, mode, config);
+
+            if (pathPoints.length < 2) continue;
+
+            // Çok Kıllı (Multi-Bristle) Fırça Darbesini Tuvale Çiz
+            this.drawMultiBristleStroke(targetCtx, pathPoints, hsl, config);
         }
     }
 
-    drawContinuousStroke(ctx, x, y, length, angle, shadowColor, mainColor, lineWidth, impasto) {
+    /**
+     * Runge-Kutta 2. Derece Entegrasyonu ile Parçacık Yolu İzleme
+     */
+    traceStreamline(startX, startY, width, height, tensorField, mode, config) {
+        const points = [{ x: startX, y: startY }];
+        let currX = startX;
+        let currY = startY;
+
+        for (let step = 0; step < config.maxSteps; step++) {
+            if (currX < 2 || currX >= width - 2 || currY < 2 || currY >= height - 2) break;
+
+            const idx = Math.floor(currY) * width + Math.floor(currX);
+            let baseAngle = tensorField.angles[idx] || 0;
+            const coh = tensorField.coherence[idx] || 0;
+
+            // Mod Varyasyonları ve Perlin Türbülansı
+            const noise = this.noise2D(currX * 0.003, currY * 0.003);
+            
+            if (mode === 2) {
+                // Yıldızlı Gece Girdap Modu
+                baseAngle += noise * Math.PI * 1.5;
+            } else if (mode === 3) {
+                // Ekspresyonist Dikey Akış
+                baseAngle = (baseAngle * coh) + ((Math.PI / 2 + noise * 0.5) * (1 - coh));
+            } else {
+                // Mod 1: Anatomik İtaat + Yumuşak Türbülans
+                baseAngle += (noise - 0.5) * config.turbulence * (1.2 - coh);
+            }
+
+            // Step (Euler/RK2 İlerleme)
+            const vx = Math.cos(baseAngle) * config.stepLength;
+            const vy = Math.sin(baseAngle) * config.stepLength;
+
+            currX += vx;
+            currY += vy;
+
+            points.push({ x: currX, y: currY });
+        }
+
+        return points;
+    }
+
+    /**
+     * Islak Fırça & Çoklu Kıl (Multi-Bristle) Boyama Simülasyonu
+     */
+    drawMultiBristleStroke(ctx, points, baseHsl, config) {
         ctx.save();
-        ctx.lineCap = 'round';
-        ctx.translate(x, y);
-        ctx.rotate(angle);
 
-        // 1. Gölge / Derinlik Çizgisi
-        ctx.strokeStyle = shadowColor;
-        ctx.lineWidth = lineWidth + 1.5;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.bezierCurveTo(length * 0.35, -length * 0.12, length * 0.65, length * 0.12, length, 0);
-        ctx.stroke();
+        const bristleCount = config.bristleCount;
+        const halfWidth = config.brushWidth / 2;
 
-        // 2. Ana Akıcı Çizgi
-        ctx.strokeStyle = mainColor;
-        ctx.lineWidth = lineWidth;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.bezierCurveTo(length * 0.35, -length * 0.12, length * 0.65, length * 0.12, length, 0);
-        ctx.stroke();
+        // Fırçanın merkez rengi ve gölge/ışık tonları
+        const primarySat = Math.min(100, Math.round(baseHsl.s * 125));
+        const primaryLum = Math.round(baseHsl.l * 100);
 
-        // 3. Kabartma (Impasto Işığı)
-        if (impasto) {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-            ctx.lineWidth = Math.max(0.8, lineWidth * 0.35);
+        for (let b = 0; b < bristleCount; b++) {
+            // Fırça ucundaki kılların dikey offset'i
+            const offsetFactor = (b / (bristleCount - 1) - 0.5) * config.brushWidth;
+            
+            // Kıl bazında mikro renk dalgalanması (Wet-on-wet etkisi)
+            const bristleLumShift = (Math.random() - 0.5) * 12;
+            const bristleHueShift = (Math.random() - 0.5) * 8;
+            
+            const bristleHue = (baseHsl.h + bristleHueShift + 360) % 360;
+            const bristleLum = Math.max(0, Math.min(100, primaryLum + bristleLumShift));
+            
+            const bristleColor = `hsla(${Math.round(bristleHue)}, ${primarySat}%, ${Math.round(bristleLum)}%, ${config.alpha})`;
+
+            ctx.strokeStyle = bristleColor;
+            ctx.lineWidth = Math.max(0.6, config.brushWidth / bristleCount * 1.2);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
             ctx.beginPath();
-            ctx.moveTo(0, -1);
-            ctx.bezierCurveTo(length * 0.35, -length * 0.12 - 1, length * 0.65, length * 0.12 - 1, length * 0.8, -1);
+
+            for (let i = 0; i < points.length; i++) {
+                const pt = points[i];
+
+                // Normal vektörü (Çizgiye dik açı)
+                let nx = 0, ny = 0;
+                if (i < points.length - 1) {
+                    const nextPt = points[i + 1];
+                    const dx = nextPt.x - pt.x;
+                    const dy = nextPt.y - pt.y;
+                    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                    nx = -dy / len;
+                    ny = dx / len;
+                }
+
+                const bx = pt.x + nx * offsetFactor;
+                const by = pt.y + ny * offsetFactor;
+
+                if (i === 0) {
+                    ctx.moveTo(bx, by);
+                } else {
+                    ctx.lineTo(bx, by);
+                }
+            }
+            ctx.stroke();
+        }
+
+        // 3D Impasto Kabartması (Işık Kırılması)
+        if (config.impasto) {
+            ctx.strokeStyle = `rgba(255, 255, 255, ${config.alpha * 0.35})`;
+            ctx.lineWidth = Math.max(0.5, config.brushWidth * 0.2);
+            ctx.beginPath();
+
+            for (let i = 0; i < points.length; i++) {
+                const pt = points[i];
+                // Hafifçe sol-üst ışık açısına kaydırma (-1px, -1px)
+                if (i === 0) ctx.moveTo(pt.x - 0.8, pt.y - 0.8);
+                else ctx.lineTo(pt.x - 0.8, pt.y - 0.8);
+            }
             ctx.stroke();
         }
 
         ctx.restore();
     }
 
-    // --- PERLIN NOISE & MATEMATİK ---
+    // --- PERLIN NOISE MATEMATİĞİ ---
     fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
     lerp(t, a, b) { return a + t * (b - a); }
     grad(hash, x, y) {
