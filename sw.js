@@ -1,4 +1,4 @@
-const CACHE_NAME = 'anomalies-v1.53 vangogh';
+const CACHE_NAME = 'anomalies-v1.62 vangogh';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
