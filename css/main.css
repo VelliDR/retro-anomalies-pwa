@@ -134,18 +134,10 @@ body {
     display: block;
 }
 
-.engine-scroll-bar {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding-bottom: 8px;
-    scrollbar-width: none;
-}
-
-/* YENİ 5x2 GRID BUTON BAR BİÇİMLENDİRMESİ */
+/* ESNEK GRID BUTON BAR BİÇİMLENDİRMESİ (Otomatik Sütun Düzeni) */
 .engine-scroll-bar {
     display: grid;
-    grid-template-columns: repeat(5, 1fr); /* 5 Eşit Sütun */
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
     gap: 8px;
     width: 100%;
 }
@@ -170,12 +162,12 @@ body {
 /* Mobil Ekranlar İçin Sıkıştırma Ayarı */
 @media (max-width: 600px) {
     .engine-scroll-bar {
-        grid-template-columns: repeat(5, 1fr);
-        gap: 4px;
+        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+        gap: 6px;
     }
 
     .engine-btn {
-        padding: 8px 2px;
+        padding: 8px 4px;
         font-size: 0.65rem;
     }
 }
@@ -233,6 +225,7 @@ body {
     color: var(--text-primary);
     border: 1px solid var(--border-color);
 }
+
 .param-group label {
     display: block;
     font-size: 0.8rem;

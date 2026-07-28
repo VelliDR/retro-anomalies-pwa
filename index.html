@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
     <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#000000">
+    <meta name="theme-color" content="#000000">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Anomalies // Retro Media Lab</title>
@@ -36,7 +36,7 @@
             <input type="file" id="fileInput" accept="image/*,.heic,.heif" hidden>
         </section>
 
-        <!-- KONTROL VE SEÇENEK PANETİ -->
+        <!-- KONTROL VE SEÇENEK PANELİ -->
         <section class="controls-section">
             <!-- MOTOR PRESET BAR -->
             <div class="engine-selector-wrapper">
@@ -52,6 +52,7 @@
                     <button class="engine-btn" data-engine="colorclash">📼 Color Clash</button>
                     <button class="engine-btn" data-engine="glitch">💾 Datamosh</button>
                     <button class="engine-btn" data-engine="textglitch">🔤 Glitch Tipografi</button>
+                    <button class="engine-btn" data-engine="vangogh">🎨 Van Gogh</button>
                 </div>
             </div>
 
@@ -67,6 +68,7 @@
             </div>
         </section>
     </main>
+
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

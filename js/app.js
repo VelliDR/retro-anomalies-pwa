@@ -16,6 +16,7 @@ import { PunkFanzineEngine } from './engines/PunkFanzineEngine.js';
 import { ColorClashEngine } from './engines/ColorClashEngine.js';
 import { GlitchEngine } from './engines/GlitchEngine.js';
 import { TextGlitchEngine } from './engines/TextGlitchEngine.js';
+import { VanGoghEngine } from './engines/VanGoghEngine.js';
 
 class AnomaliesApp {
     constructor() {
@@ -39,7 +40,8 @@ class AnomaliesApp {
             fanzine: new PunkFanzineEngine(),
             colorclash: new ColorClashEngine(),
             glitch: new GlitchEngine(),
-            textglitch: new TextGlitchEngine()
+            textglitch: new TextGlitchEngine(),
+            vangogh: new VanGoghEngine()
         };
 
         this.fullSourceCanvas = null;
@@ -57,7 +59,8 @@ class AnomaliesApp {
             fanzine: { contrastBoost: 2.5, tonerNoise: 40 },
             colorclash: { blockSize: 8 },
             glitch: { intensity: 40 },
-            textglitch: { text: 'SYSTEM ERROR', style: 'rgb_shift', fontSize: 42 }
+            textglitch: { text: 'SYSTEM ERROR', style: 'rgb_shift', fontSize: 42 },
+            vangogh: { mode: 2, stepSize: 12, brushMinLength: 10, brushMaxLength: 30, impasto: true }
         };
 
         this.initEventListeners();
@@ -147,6 +150,15 @@ class AnomaliesApp {
                 return engineObj.render(targetSourceCanvas, p.intensity);
             case 'textglitch':
                 return engineObj.render(targetSourceCanvas, p.text, p.style, Math.round(p.fontSize * scaleFactor));
+            case 'vangogh':
+                return engineObj.render(
+                    targetSourceCanvas,
+                    parseInt(p.mode, 10),
+                    Math.round(p.stepSize * scaleFactor),
+                    Math.round(p.brushMinLength * scaleFactor),
+                    Math.round(p.brushMaxLength * scaleFactor),
+                    p.impasto
+                );
             default:
                 return targetSourceCanvas;
         }
@@ -332,6 +344,33 @@ class AnomaliesApp {
                 <div class="param-group" style="margin-top: 12px;">
                     <label>Font Boyutu: <b id="val-fontSize">${p.fontSize}px</b></label>
                     <input type="range" id="input-fontSize" min="16" max="80" value="${p.fontSize}">
+                </div>
+            `;
+        } else if (engine === 'vangogh') {
+            html = `
+                <div class="param-group">
+                    <label>Fırça Akış Modu</label>
+                    <select id="input-mode">
+                        <option value="1" ${p.mode == 1 ? 'selected' : ''}>Mod 1: Paralel Hat Akışı</option>
+                        <option value="2" ${p.mode == 2 ? 'selected' : ''}>Mod 2: Girdap & Odak Bağlantıları (Yıldızlı Gece)</option>
+                        <option value="3" ${p.mode == 3 ? 'selected' : ''}>Mod 3: Merkez Dik / Kenarlar Radyal</option>
+                    </select>
+                </div>
+                <div class="param-group" style="margin-top: 12px;">
+                    <label>Fırça Yoğunluğu / Adım: <b id="val-stepSize">${p.stepSize}px</b></label>
+                    <input type="range" id="input-stepSize" min="6" max="24" value="${p.stepSize}">
+                </div>
+                <div class="param-group" style="margin-top: 12px;">
+                    <label>Min Fırça Boyu: <b id="val-brushMinLength">${p.brushMinLength}px</b></label>
+                    <input type="range" id="input-brushMinLength" min="5" max="20" value="${p.brushMinLength}">
+                </div>
+                <div class="param-group" style="margin-top: 12px;">
+                    <label>Max Fırça Boyu: <b id="val-brushMaxLength">${p.brushMaxLength}px</b></label>
+                    <input type="range" id="input-brushMaxLength" min="15" max="50" value="${p.brushMaxLength}">
+                </div>
+                <div class="param-group" style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="input-impasto" ${p.impasto ? 'checked' : ''}>
+                    <label for="input-impasto">3D Boya Kabartma (Impasto Işığı)</label>
                 </div>
             `;
         }
