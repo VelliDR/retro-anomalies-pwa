@@ -77,7 +77,7 @@ export class VanGoghEngine {
         return points;
     }
 
-    drawPass(srcCtx, targetCtx, pixels, width, height, featurePoints, mode, config) {
+       drawPass(srcCtx, targetCtx, pixels, width, height, featurePoints, mode, config) {
         const centerX = width / 2;
         const centerY = height / 2;
 
@@ -100,9 +100,11 @@ export class VanGoghEngine {
                 const mainColor = `hsla(${hsl.h}, ${Math.round(hsl.s * 100)}%, ${Math.round(hsl.l * 100)}%, ${config.alpha})`;
 
                 if (config.drawOutline) {
-                    const compHue = (hsl.h + 180) % 360;
-                    const contrastColor = `hsla(${compHue}, ${Math.round(hsl.s * 100)}%, ${Math.max(10, hsl.l * 80)}%, ${config.alpha * 0.8})`;
-                    this.drawSwirlStroke(targetCtx, x, y, baseLen, angle, contrastColor, config.lineWidth + 2, 0);
+                    // YENİ: +180° zıt renk kaldırıldı. Orijinal rengin doğal gölgesi (daha koyu tonu) kullanılıyor
+                    const shadowLightness = Math.max(0.05, hsl.l * 0.45);
+                    const shadowColor = `hsla(${hsl.h}, ${Math.round(hsl.s * 100)}%, ${Math.round(shadowLightness * 100)}%, ${config.alpha * 0.8})`;
+                    
+                    this.drawSwirlStroke(targetCtx, x, y, baseLen, angle, shadowColor, config.lineWidth + 2, 0);
                     this.drawSwirlStroke(targetCtx, x, y, baseLen, angle, mainColor, config.lineWidth, 0);
 
                     if (config.impasto) {
