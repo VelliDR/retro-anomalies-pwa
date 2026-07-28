@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 const CACHE_NAME = 'anomalies-v3-vangogh';
+=======
+const CACHE_NAME = 'anomalies-v2.10 vangogh';
+>>>>>>> 177820f829bea3cd3754524e94004892c8f2650f
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
