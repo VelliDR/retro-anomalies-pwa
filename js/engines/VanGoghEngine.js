@@ -26,9 +26,11 @@ export class VanGoghEngine {
         const imgData = srcCtx.getImageData(0, 0, width, height);
         const pixels = imgData.data;
 
-        // Arka Plan Astar Boyası
-        targetCtx.fillStyle = '#12100e';
-        targetCtx.fillRect(0, 0, width, height);
+        // YÖNTEM 1: Siyah boşluklar yerine orijinal fotoğrafı bulanık ve doygun bir astar olarak ser
+        targetCtx.save();
+        targetCtx.filter = 'blur(10px) saturate(130%)';
+        targetCtx.drawImage(sourceCanvas, 0, 0, width, height);
+        targetCtx.restore();
 
         // Mod 2 için Odak Noktaları Ön Analizi
         const featurePoints = this.extractFeaturePoints(pixels, width, height);
@@ -39,7 +41,7 @@ export class VanGoghEngine {
             minLen: brushMinLength * 1.4,
             maxLen: brushMaxLength * 1.4,
             lineWidth: 6,
-            alpha: 0.5,
+            alpha: 0.6,
             drawOutline: false,
             impasto: false
         });
@@ -50,7 +52,7 @@ export class VanGoghEngine {
             minLen: brushMinLength,
             maxLen: brushMaxLength,
             lineWidth: 3,
-            alpha: 0.9,
+            alpha: 0.95,
             drawOutline: true,
             impasto: impasto
         });
@@ -60,12 +62,11 @@ export class VanGoghEngine {
 
     extractFeaturePoints(pixels, width, height) {
         const points = [];
-        const sampleStep = 30; // Performans ve netlik için ızgara aralığı açık tutulur
+        const sampleStep = 30;
 
         for (let y = 0; y < height; y += sampleStep) {
             for (let x = 0; x < width; x += sampleStep) {
                 const i = (y * width + x) * 4;
-                // Daha sert bir kontrast eşiği (Sadece en belirgin noktalar)
                 const brightness = (pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114);
 
                 if (brightness > 220 || brightness < 30) {
@@ -117,21 +118,17 @@ export class VanGoghEngine {
 
     calculateAngle(x, y, width, height, centerX, centerY, featurePoints, mode) {
         if (mode === 1) {
-            // MOD 1: Sabit Paralel Akış
             const normY = y / height;
             const parallelFactor = Math.sin(normY * Math.PI);
             return (Math.PI / 6) + (parallelFactor * 0.2) + (Math.sin(x * 0.02) * 0.1);
-
         } else if (mode === 2) {
-            // MOD 2: Manyetik Kutup (Net Odak Bağlantıları)
             let closest = { dist: Infinity, point: null };
             let secondClosest = { dist: Infinity, point: null };
 
-            // Sadece en yakın 2 noktayı bul (Bulanık ortalamaları engeller)
             for (let p of featurePoints) {
                 const dx = p.x - x;
                 const dy = p.y - y;
-                const dist = dx * dx + dy * dy; // Karekök almadan performanslı mesafe
+                const dist = dx * dx + dy * dy;
 
                 if (dist < closest.dist) {
                     secondClosest = { ...closest };
@@ -144,42 +141,28 @@ export class VanGoghEngine {
             const influenceLimit = (width * 0.25) ** 2;
 
             if (closest.point && secondClosest.point && secondClosest.dist < influenceLimit) {
-                // İki odak noktasının arasındayız: Onları bağlayan hatta paralel ak (Köprü)
                 const dxBridge = secondClosest.point.x - closest.point.x;
                 const dyBridge = secondClosest.point.y - closest.point.y;
-                return Math.atan2(dyBridge, dxBridge) + (Math.sin(x * 0.05) * 0.15); // Hafif organik dalgalanma
+                return Math.atan2(dyBridge, dxBridge) + (Math.sin(x * 0.05) * 0.15);
             } 
             else if (closest.point && closest.dist < influenceLimit) {
-                // Tek bir odağın etrafındayız: Etrafında dairesel dön (Girdap)
                 return Math.atan2(y - closest.point.y, x - closest.point.x) + (Math.PI / 2);
             } 
             else {
-                // Odaklardan uzaktayız: Merkeze doğru hafif eğimli bir tuval akışı
                 return Math.atan2(y - centerY, x - centerX) + 0.5;
             }
-
         } else {
-            // MOD 3: Merkez Kartezyen (Dik/Paralel) vs. Kenar Swirly Bokeh
-
-            // 1. Merkez Mantığı: Hangi eksendeki kenarlara daha yakınız?
             const distToXEdges = Math.min(x, width - x);
             const distToYEdges = Math.min(y, height - y);
-            
-            // X kenarlarına (sol/sağ) yakınsak tam dikey (PI/2), Y kenarlarına (üst/alt) yakınsak tam yatay (0)
             const centerAngle = distToXEdges < distToYEdges ? Math.PI / 2 : 0;
 
-            // 2. Kenar Mantığı: Swirly Bokeh (Petzval Spirali)
             const dx = x - centerX;
             const dy = y - centerY;
             const distFromCenter = Math.sqrt(dx * dx + dy * dy);
             const maxRadius = Math.max(centerX, centerY);
             const normDist = distFromCenter / maxRadius;
             
-            // Merkeze göre teğet dönme açısı + dışarı doğru bükülme
             const bokehAngle = Math.atan2(dy, dx) + (Math.PI / 2) + (normDist * 0.6);
-
-            // 3. Sert Kesit Geçişi (Makine-Doğa çarpışması)
-            // Merkezden %30'a kadar Kartezyen ızgara, sonrasında hızla Swirly girdaba dönüş.
             const mixRatio = Math.min(1, Math.max(0, (normDist - 0.3) * 2.5));
 
             return (centerAngle * (1 - mixRatio)) + (bokehAngle * mixRatio);
