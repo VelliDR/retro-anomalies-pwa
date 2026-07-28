@@ -1,14 +1,14 @@
 /**
  * @file VanGoghEngine.js
- * @description Anomalies Retro Medya Laboratuvarı için Organik Van Gogh & Akış Motoru.
- * Structure Tensor, Perlin Noise Türbülansı ve Adaptif Fırça Yoğunluklu Üretken Mimari.
+ * @description Anomalies Retro Medya Laboratuvarı için Makro Vektör Akışlı & Gravür Tipi Van Gogh Motoru.
+ * Uzun, kesintisiz Bezier eğrileri ve makro akış haritası ile optik dokuma estetiği.
  */
 
 import { canvasPool } from '../core/CanvasPool.js';
 
 export class VanGoghEngine {
     constructor() {
-        // Dahili Perlin Noise Permütasyon Tablosu (Sıfır Dış Bağımlılık)
+        // Düşük frekanslı makro akışlar için hafif Perlin tablosu
         this.p = new Int32Array(512);
         const perm = [
             151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,
@@ -30,15 +30,7 @@ export class VanGoghEngine {
         }
     }
 
-    /**
-     * @param {HTMLCanvasElement} sourceCanvas
-     * @param {number} mode - 1: Kontur İtaatli (Structure Tensor), 2: Kolmogorov Türbülansı (Kaotik), 3: Adaptif Detay Odaklı
-     * @param {number} stepSize - Temel fırça adımı (px)
-     * @param {number} brushMinLength - Min fırça boyu
-     * @param {number} brushMaxLength - Maks fırça boyu
-     * @param {boolean} impasto - 3D Kabartma
-     */
-    render(sourceCanvas, mode = 1, stepSize = 10, brushMinLength = 8, brushMaxLength = 28, impasto = true) {
+    render(sourceCanvas, mode = 1, stepSize = 10, brushMinLength = 16, brushMaxLength = 36, impasto = true) {
         const width = sourceCanvas.width;
         const height = sourceCanvas.height;
 
@@ -49,28 +41,25 @@ export class VanGoghEngine {
         const imgData = srcCtx.getImageData(0, 0, width, height);
         const pixels = imgData.data;
 
-        // ASTAR KATMANI: Fotoğrafın bulanıklaştırılmış kendi renk hamuru (Boşluk krizini çözer)
+        // ASTAR KATMANI: Siyah boşluk yerine yumuşatılmış orijinal renkler
         targetCtx.save();
-        targetCtx.filter = 'blur(8px) saturate(120%)';
+        targetCtx.filter = 'blur(10px) saturate(125%)';
         targetCtx.drawImage(sourceCanvas, 0, 0, width, height);
         targetCtx.restore();
 
-        // 1. Structure Tensor & Sobel Vektör Haritası (Işık ve Kontur Analizi)
-        const vectorMap = this.buildVectorMap(pixels, width, height, 2);
-
-        // 2. KATMAN: Arka Plan Geniş Kütle Darbeleri
-        this.drawPass(targetCtx, pixels, width, height, vectorMap, mode, {
-            step: Math.max(5, Math.round(stepSize * 1.4)),
-            minLen: brushMinLength * 1.3,
-            maxLen: brushMaxLength * 1.3,
-            lineWidth: 5,
-            alpha: 0.7,
+        // 1. KATMAN: Zemin Doku - Geniş ve Uzun Süpürme Çizgileri
+        this.drawPass(targetCtx, pixels, width, height, mode, {
+            step: Math.max(6, Math.round(stepSize * 1.3)),
+            minLen: brushMinLength * 1.2,
+            maxLen: brushMaxLength * 1.2,
+            lineWidth: 4,
+            alpha: 0.65,
             impasto: false
         });
 
-        // 3. KATMAN: Ön Plan Detaylı Islak Fırça Darbeleri
-        this.drawPass(targetCtx, pixels, width, height, vectorMap, mode, {
-            step: Math.max(2, stepSize),
+        // 2. KATMAN: Ana Vektörel Gravür Katmanı (Uzun ve Kesintisiz Hatlar)
+        this.drawPass(targetCtx, pixels, width, height, mode, {
+            step: Math.max(3, stepSize),
             minLen: brushMinLength,
             maxLen: brushMaxLength,
             lineWidth: 2.8,
@@ -81,47 +70,10 @@ export class VanGoghEngine {
         return targetCanvas;
     }
 
-    /**
-     * Sobel Filtresi ile Görselin Kontur Vektörlerini ve Detay Yoğunluğunu Çıkarır
-     */
-    buildVectorMap(pixels, width, height, downscale = 2) {
-        const sw = Math.floor(width / downscale);
-        const sh = Math.floor(height / downscale);
-        const map = new Float32Array(sw * sh * 2); // [Angle, Magnitude]
+    drawPass(targetCtx, pixels, width, height, mode, config) {
+        const centerX = width / 2;
+        const centerY = height / 2;
 
-        for (let y = 1; y < sh - 1; y++) {
-            for (let x = 1; x < sw - 1; x++) {
-                const srcX = x * downscale;
-                const srcY = y * downscale;
-
-                let gx = 0, gy = 0;
-
-                // Sobel 3x3 Matrisi
-                for (let dy = -1; dy <= 1; dy++) {
-                    for (let dx = -1; dx <= 1; dx++) {
-                        const idx = ((srcY + dy) * width + (srcX + dx)) * 4;
-                        const lum = pixels[idx] * 0.299 + pixels[idx + 1] * 0.587 + pixels[idx + 2] * 0.114;
-                        
-                        const wx = dx * (dy === 0 ? 2 : 1);
-                        const wy = dy * (dx === 0 ? 2 : 1);
-                        gx += lum * wx;
-                        gy += lum * wy;
-                    }
-                }
-
-                const mag = Math.sqrt(gx * gx + gy * gy);
-                // Kenara teğet açı (Kenarları takip eden fırça)
-                const angle = Math.atan2(gy, gx) + (Math.PI / 2);
-
-                const mapIdx = (y * sw + x) * 2;
-                map[mapIdx] = angle;
-                map[mapIdx + 1] = Math.min(1, mag / 200); // 0 (Düz) - 1 (Keskin Detay)
-            }
-        }
-        return { map, sw, sh, downscale };
-    }
-
-    drawPass(targetCtx, pixels, width, height, vectorMap, mode, config) {
         for (let y = 0; y < height; y += config.step) {
             for (let x = 0; x < width; x += config.step) {
                 const i = (y * width + x) * 4;
@@ -132,102 +84,84 @@ export class VanGoghEngine {
 
                 if (a < 0.1) continue;
 
-                // Vektör haritasından yerel detay ve açı okuma
-                const vx = Math.floor(x / vectorMap.downscale);
-                const vy = Math.floor(y / vectorMap.downscale);
-                const mapIdx = (vy * vectorMap.sw + vx) * 2;
-
-                const edgeAngle = vectorMap.map[mapIdx] || 0;
-                const edgeMag = vectorMap.map[mapIdx + 1] || 0;
-
-                // Perlin Noise ile Organik Türbülans Hesabı
-                const noiseVal = this.noise2D(x * 0.004, y * 0.004);
-                let finalAngle;
-
-                if (mode === 1) {
-                    // MOD 1: Kontur İtaatli (Fotoğrafın anatomisini korur)
-                    finalAngle = edgeAngle + (noiseVal * 0.35);
-                } else if (mode === 2) {
-                    // MOD 2: Kolmogorov Türbülansı (Kaotik Sıvı Akışı)
-                    const fluidAngle = this.noise2D(x * 0.006, y * 0.006) * Math.PI * 2;
-                    finalAngle = (fluidAngle * 0.75) + (edgeAngle * 0.25);
-                } else {
-                    // MOD 3: Adaptif Detay (Yüksek detayda fotoğrafa uyar, düz alanda çıldırır)
-                    finalAngle = (edgeAngle * edgeMag) + ((this.noise2D(x * 0.005, y * 0.005) * Math.PI) * (1 - edgeMag));
-                }
-
-                // Adaptif Fırça Boyutlandırma (Detaylı yerlerde ince, düz yerlerde kalın)
-                const adaptiveLen = (config.minLen + Math.random() * (config.maxLen - config.minLen)) * (1.2 - edgeMag * 0.3);
-                const adaptiveWidth = Math.max(1.2, config.lineWidth * (1.3 - edgeMag * 0.4));
+                // AÇI HESABI: Yüksek frekanslı mikro kırılmalar tamamen kaldırıldı
+                const angle = this.calculateMacroAngle(x, y, width, height, centerX, centerY, mode);
+                
+                // KISALMAYAN UZUN ÇİZGİLER (Tüy/Kıymık oluşumunu engeller)
+                const strokeLen = config.minLen + Math.random() * (config.maxLen - config.minLen);
 
                 const hsl = this.rgbToHsl(r, g, b);
-                hsl.s = Math.min(1, hsl.s * 1.2); // Doğal Doygunluk Artışı
+                hsl.s = Math.min(1, hsl.s * 1.2);
 
-                // ISLAK PALET (Wet-on-Wet): İki farklı pigmentin tek fırçada birleşimi
-                const primaryColor = `hsla(${hsl.h}, ${Math.round(hsl.s * 100)}%, ${Math.round(hsl.l * 100)}%, ${config.alpha})`;
-                
-                // İkincil Pigment: Aynı renk ailesinde hafif açı kayması
-                const pigmentShiftHue = (hsl.h + (noiseVal * 15) + 360) % 360;
-                const secondaryColor = `hsla(${pigmentShiftHue}, ${Math.round(hsl.s * 90)}%, ${Math.round(hsl.l * 85)}%, ${config.alpha * 0.7})`;
+                const mainColor = `hsla(${hsl.h}, ${Math.round(hsl.s * 100)}%, ${Math.round(hsl.l * 100)}%, ${config.alpha})`;
 
-                // Gölge Tonu (Komplementer zıt renk YERİNE kendi tonunun derinliği)
-                const shadowLightness = Math.max(0.05, hsl.l * 0.4);
-                const shadowColor = `hsla(${hsl.h}, ${Math.round(hsl.s * 100)}%, ${Math.round(shadowLightness * 100)}%, ${config.alpha * 0.85})`;
+                // Gölge Rengi: Orijinal rengin kendi koyu tonu
+                const shadowLightness = Math.max(0.05, hsl.l * 0.45);
+                const shadowColor = `hsla(${hsl.h}, ${Math.round(hsl.s * 100)}%, ${Math.round(shadowLightness * 100)}%, ${config.alpha * 0.8})`;
 
-                // Çizim
-                this.drawWetStroke(targetCtx, x, y, adaptiveLen, finalAngle, shadowColor, primaryColor, secondaryColor, adaptiveWidth, config.impasto);
+                this.drawContinuousStroke(targetCtx, x, y, strokeLen, angle, shadowColor, mainColor, config.lineWidth, config.impasto);
             }
         }
     }
 
-    /**
-     * Çift Pigmentli ve Doğal Gölge Konturlu Yağlı Boya Fırça Darbesi
-     */
-    drawWetStroke(ctx, x, y, length, angle, shadowColor, primaryColor, secondaryColor, lineWidth, impasto) {
+    calculateMacroAngle(x, y, width, height, centerX, centerY, mode) {
+        if (mode === 1) {
+            // MOD 1: Akıcı Makro Nehir (Geniş alanlı pürüzsüz dalga)
+            const n1 = this.noise2D(x * 0.0015, y * 0.0015);
+            const n2 = this.noise2D(y * 0.002, x * 0.002);
+            return (n1 * Math.PI) + (n2 * 0.5);
+        } else if (mode === 2) {
+            // MOD 2: Manyetik Merkez & Ritmik Topoğrafi
+            const dx = x - centerX;
+            const dy = y - centerY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const baseAngle = Math.atan2(dy, dx) + (Math.PI / 2);
+            const wave = Math.sin(dist * 0.02 + x * 0.005) * 0.25;
+            return baseAngle + wave;
+        } else {
+            // MOD 3: Çapraz Dokuma / Banknot Çizgileri
+            const normY = y / height;
+            const wave = Math.sin((x + y) * 0.01) * 0.2;
+            return (Math.PI / 4) + wave + (normY * 0.1);
+        }
+    }
+
+    drawContinuousStroke(ctx, x, y, length, angle, shadowColor, mainColor, lineWidth, impasto) {
         ctx.save();
         ctx.lineCap = 'round';
         ctx.translate(x, y);
         ctx.rotate(angle);
 
-        // 1. Derinlik / Gölge Katmanı
+        // 1. Gölge / Derinlik Çizgisi
         ctx.strokeStyle = shadowColor;
-        ctx.lineWidth = lineWidth + 1.8;
+        ctx.lineWidth = lineWidth + 1.5;
         ctx.beginPath();
         ctx.moveTo(0, 0);
-        ctx.bezierCurveTo(length * 0.3, -length * 0.15, length * 0.7, length * 0.15, length, 0);
+        ctx.bezierCurveTo(length * 0.35, -length * 0.12, length * 0.65, length * 0.12, length, 0);
         ctx.stroke();
 
-        // 2. İkincil Pigment (Fırçadaki ıslak karışım)
-        ctx.strokeStyle = secondaryColor;
+        // 2. Ana Akıcı Çizgi
+        ctx.strokeStyle = mainColor;
         ctx.lineWidth = lineWidth;
         ctx.beginPath();
-        ctx.moveTo(0, 0.8);
-        ctx.bezierCurveTo(length * 0.3, -length * 0.15 + 0.8, length * 0.7, length * 0.15 + 0.8, length, 0.8);
-        ctx.stroke();
-
-        // 3. Ana Pigment
-        ctx.strokeStyle = primaryColor;
-        ctx.lineWidth = lineWidth * 0.85;
-        ctx.beginPath();
         ctx.moveTo(0, 0);
-        ctx.bezierCurveTo(length * 0.3, -length * 0.15, length * 0.7, length * 0.15, length, 0);
+        ctx.bezierCurveTo(length * 0.35, -length * 0.12, length * 0.65, length * 0.12, length, 0);
         ctx.stroke();
 
-        // 4. Impasto (3D Işık Yansıması)
+        // 3. Kabartma (Impasto Işığı)
         if (impasto) {
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-            ctx.lineWidth = Math.max(0.8, lineWidth * 0.3);
+            ctx.lineWidth = Math.max(0.8, lineWidth * 0.35);
             ctx.beginPath();
             ctx.moveTo(0, -1);
-            ctx.bezierCurveTo(length * 0.3, -length * 0.15 - 1, length * 0.7, length * 0.15 - 1, length * 0.8, -1);
+            ctx.bezierCurveTo(length * 0.35, -length * 0.12 - 1, length * 0.65, length * 0.12 - 1, length * 0.8, -1);
             ctx.stroke();
         }
 
         ctx.restore();
     }
 
-    // --- PERLIN NOISE & YARDIMCI MATEMATİK METOTLARI ---
-
+    // --- PERLIN NOISE & MATEMATİK ---
     fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
     lerp(t, a, b) { return a + t * (b - a); }
     grad(hash, x, y) {
