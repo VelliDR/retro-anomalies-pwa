@@ -177,24 +177,51 @@ class AnomaliesApp {
     }
 
     downloadHighResResult() {
-        if (!this.fullSourceCanvas) return;
+    if (!this.fullSourceCanvas) return;
 
-        const oldText = this.btnDownload.textContent;
-        this.btnDownload.textContent = '⚙️ Yüksek Kalitede İşleniyor...';
-        this.btnDownload.disabled = true;
+    const oldText = this.btnDownload.textContent;
+    this.btnDownload.textContent = '⚙️ Yüksek Kalitede İşleniyor...';
+    this.btnDownload.disabled = true;
 
-        setTimeout(() => {
+    // İşlemi ana UI thread'i kilitlemeden başlatıyoruz
+    setTimeout(() => {
+        try {
             const highResCanvas = this._executeEngine(this.fullSourceCanvas, this.scaleRatio);
 
-            const link = document.createElement('a');
-            link.download = `anomalies_${this.activeEngine}_${highResCanvas.width}x${highResCanvas.height}_${Date.now()}.png`;
-            link.href = highResCanvas.toDataURL('image/png', 1.0);
-            link.click();
+            // iOS Safari için toDataURL yerine toBlob kullanımı şarttır (RAM çökmesini engeller)
+            highResCanvas.toBlob((blob) => {
+                if (!blob) {
+                    alert('Görsel oluşturulamadı, bellek yetersiz olabilir.');
+                    this.btnDownload.textContent = oldText;
+                    this.btnDownload.disabled = false;
+                    return;
+                }
 
+                // Bellekte geçici bir Blob URL oluşturuyoruz
+                const blobUrl = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.download = `anomalies_${this.activeEngine}_${highResCanvas.width}x${highResCanvas.height}_${Date.now()}.png`;
+                link.href = blobUrl;
+
+                // iOS Safari'nin indirmeyi tanıması için elementi DOM'a ekliyoruz
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                // İşlem bitince geçici belleği serbest bırakıyoruz
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+
+                this.btnDownload.textContent = oldText;
+                this.btnDownload.disabled = false;
+            }, 'image/png', 1.0);
+
+        } catch (err) {
+            alert('İndirme sırasında hata oluştu: ' + err.message);
             this.btnDownload.textContent = oldText;
             this.btnDownload.disabled = false;
-        }, 50);
-    }
+        }
+    }, 50);
+}
 
     renderUIControls() {
         if (!this.previewSourceCanvas) {
