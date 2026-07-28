@@ -1,10 +1,10 @@
 {
-  "name": "Uygulama Adı",
-  "short_name": "Uygulama",
-  "description": "PWA Uygulama Açıklaması",
-  "start_url": "/",
+  "name": "Anomalies // Retro Media Lab",
+  "short_name": "Anomalies",
+  "description": "Çevrimdışı Retro & Glitch Medya Laboratuvarı. Görselleri piksel, ASCII, glitch ve sanatsal efektlerle dönüştürün.",
+  "start_url": "./",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#0b0f17",
   "theme_color": "#000000",
   "orientation": "portrait",
   "icons": [
