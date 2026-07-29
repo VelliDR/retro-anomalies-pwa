@@ -17,6 +17,7 @@ import { ColorClashEngine } from './engines/ColorClashEngine.js';
 import { GlitchEngine } from './engines/GlitchEngine.js';
 import { TextGlitchEngine } from './engines/TextGlitchEngine.js';
 import { VanGoghEngine } from './engines/VanGoghEngine.js';
+import { MinecraftEngine } from './engines/MinecraftEngine.js';
 
 class AnomaliesApp {
     constructor() {
@@ -41,7 +42,8 @@ class AnomaliesApp {
             colorclash: new ColorClashEngine(),
             glitch: new GlitchEngine(),
             textglitch: new TextGlitchEngine(),
-            vangogh: new VanGoghEngine()
+            vangogh: new VanGoghEngine(),
+            minecraft: new MinecraftEngine()
         };
 
         this.fullSourceCanvas = null;
@@ -60,7 +62,8 @@ class AnomaliesApp {
             colorclash: { blockSize: 8 },
             glitch: { intensity: 40 },
             textglitch: { text: 'SYSTEM ERROR', style: 'rgb_shift', fontSize: 42 },
-            vangogh: { mode: 2, stepSize: 12, brushMinLength: 10, brushMaxLength: 30, impasto: true }
+            vangogh: { mode: 2, stepSize: 12, brushMinLength: 10, brushMaxLength: 30, impasto: true },
+            minecraft: { mode: 1, blockSize: 24, paletteKey: 'classic' }
         };
 
         this.initEventListeners();
@@ -159,6 +162,13 @@ class AnomaliesApp {
                     Math.round(p.brushMaxLength * scaleFactor),
                     p.impasto
                 );
+            case 'minecraft':
+                return engineObj.render(
+                    targetSourceCanvas,
+                    parseInt(p.mode, 10),
+                    p.blockSize,
+                    p.paletteKey
+                );
             default:
                 return targetSourceCanvas;
         }
@@ -177,51 +187,46 @@ class AnomaliesApp {
     }
 
     downloadHighResResult() {
-    if (!this.fullSourceCanvas) return;
+        if (!this.fullSourceCanvas) return;
 
-    const oldText = this.btnDownload.textContent;
-    this.btnDownload.textContent = '⚙️ Yüksek Kalitede İşleniyor...';
-    this.btnDownload.disabled = true;
+        const oldText = this.btnDownload.textContent;
+        this.btnDownload.textContent = '⚙️ Yüksek Kalitede İşleniyor...';
+        this.btnDownload.disabled = true;
 
-    // İşlemi ana UI thread'i kilitlemeden başlatıyoruz
-    setTimeout(() => {
-        try {
-            const highResCanvas = this._executeEngine(this.fullSourceCanvas, this.scaleRatio);
+        setTimeout(() => {
+            try {
+                const highResCanvas = this._executeEngine(this.fullSourceCanvas, this.scaleRatio);
 
-            // iOS Safari için toDataURL yerine toBlob kullanımı şarttır (RAM çökmesini engeller)
-            highResCanvas.toBlob((blob) => {
-                if (!blob) {
-                    alert('Görsel oluşturulamadı, bellek yetersiz olabilir.');
+                highResCanvas.toBlob((blob) => {
+                    if (!blob) {
+                        alert('Görsel oluşturulamadı, bellek yetersiz olabilir.');
+                        this.btnDownload.textContent = oldText;
+                        this.btnDownload.disabled = false;
+                        return;
+                    }
+
+                    const blobUrl = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.download = `anomalies_${this.activeEngine}_${highResCanvas.width}x${highResCanvas.height}_${Date.now()}.png`;
+                    link.href = blobUrl;
+
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+
                     this.btnDownload.textContent = oldText;
                     this.btnDownload.disabled = false;
-                    return;
-                }
+                }, 'image/png', 1.0);
 
-                // Bellekte geçici bir Blob URL oluşturuyoruz
-                const blobUrl = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.download = `anomalies_${this.activeEngine}_${highResCanvas.width}x${highResCanvas.height}_${Date.now()}.png`;
-                link.href = blobUrl;
-
-                // iOS Safari'nin indirmeyi tanıması için elementi DOM'a ekliyoruz
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-
-                // İşlem bitince geçici belleği serbest bırakıyoruz
-                setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
-
+            } catch (err) {
+                alert('İndirme sırasında hata oluştu: ' + err.message);
                 this.btnDownload.textContent = oldText;
                 this.btnDownload.disabled = false;
-            }, 'image/png', 1.0);
-
-        } catch (err) {
-            alert('İndirme sırasında hata oluştu: ' + err.message);
-            this.btnDownload.textContent = oldText;
-            this.btnDownload.disabled = false;
-        }
-    }, 50);
-}
+            }
+        }, 50);
+    }
 
     renderUIControls() {
         if (!this.previewSourceCanvas) {
@@ -400,45 +405,74 @@ class AnomaliesApp {
                     <label for="input-impasto">3D Boya Kabartma (Impasto Işığı)</label>
                 </div>
             `;
+        } else if (engine === 'minecraft') {
+            html = `
+                <div class="param-group">
+                    <label>Render Modu</label>
+                    <select id="input-mode">
+                        <option value="1" ${p.mode == 1 ? 'selected' : ''}>Mod 1: 2D Düz Blok Haritası (Flat Map)</option>
+                        <option value="2" ${p.mode == 2 ? 'selected' : ''}>Mod 2: 2.5D İzometrik Voxel Küpleri</option>
+                    </select>
+                </div>
+                <div class="param-group" style="margin-top: 12px;">
+                    <label>Blok Boyutu: <b id="val-blockSize">${p.blockSize}px</b></label>
+                    <input type="range" id="input-blockSize" min="8" max="48" step="2" value="${p.blockSize}">
+                </div>
+                <div class="param-group" style="margin-top: 12px;">
+                    <label>Blok Renk Paleti</label>
+                    <select id="input-paletteKey">
+                        <option value="classic" ${p.paletteKey === 'classic' ? 'selected' : ''}>Klasik Doğal Bloklar (Toprak, Çim, Taş)</option>
+                        <option value="colorful" ${p.paletteKey === 'colorful' ? 'selected' : ''}>Renkli Yün & Cevherler (Pixel Wool)</option>
+                    </select>
+                </div>
+            `;
         }
 
         this.paramsContainer.innerHTML = html;
         this.bindDynamicParamEvents();
     }
 
-    bindDynamicParamEvents() {
-        const engine = this.activeEngine;
+bindDynamicParamEvents() {
+    const engine = this.activeEngine;
 
-        this.paramsContainer.querySelectorAll('input, select').forEach(input => {
-            input.addEventListener('input', (e) => {
-                const key = e.target.id.replace('input-', '');
-                let value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+    this.paramsContainer.querySelectorAll('input, select').forEach(input => {
+        const updateParam = (e) => {
+            const key = e.target.id.replace('input-', '');
+            let value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
 
-                if (e.target.type === 'range') value = parseFloat(value);
+            if (e.target.type === 'range') value = parseFloat(value);
+            
+            // DÜZELTME: Sadece sayısal modları (1, 2, 3) int yap, metin modlarını ('rainbow', 'emerald') bozma
+            if (key === 'mode' && !isNaN(value)) {
+                value = parseInt(value, 10);
+            }
 
-                if (key === 'charSetKey') {
-                    const customWrapper = document.getElementById('custom-text-wrapper');
-                    if (customWrapper) {
-                        customWrapper.style.display = value === 'custom' ? 'block' : 'none';
-                    }
+            if (key === 'charSetKey') {
+                const customWrapper = document.getElementById('custom-text-wrapper');
+                if (customWrapper) {
+                    customWrapper.style.display = value === 'custom' ? 'block' : 'none';
                 }
+            }
 
-                this.params[engine][key] = value;
+            this.params[engine][key] = value;
 
-                const valLabel = document.getElementById(`val-${key}`);
-                if (valLabel) {
-                    let suffix = '';
-                    if (key === 'contrastBoost') suffix = 'x';
-                    else if (['wear', 'tonerNoise', 'intensity'].includes(key)) suffix = '%';
-                    else if (typeof value === 'number') suffix = 'px';
+            const valLabel = document.getElementById(`val-${key}`);
+            if (valLabel) {
+                let suffix = '';
+                if (key === 'contrastBoost') suffix = 'x';
+                else if (['wear', 'tonerNoise', 'intensity'].includes(key)) suffix = '%';
+                else if (typeof value === 'number') suffix = 'px';
 
-                    valLabel.textContent = `${value}${suffix}`;
-                }
+                valLabel.textContent = `${value}${suffix}`;
+            }
 
-                this.render();
-            });
-        });
-    }
+            this.render();
+        };
+
+        input.addEventListener('input', updateParam);
+        input.addEventListener('change', updateParam);
+    });
+}
 }
 
 window.addEventListener('DOMContentLoaded', () => new AnomaliesApp());

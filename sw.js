@@ -1,8 +1,5 @@
-<<<<<<< HEAD
-const CACHE_NAME = 'anomalies-v3-vangogh';
-=======
-const CACHE_NAME = 'anomalies-v2.10 vangogh';
->>>>>>> 177820f829bea3cd3754524e94004892c8f2650f
+
+const CACHE_NAME = 'anomalies-v3,2-vangogh';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -24,7 +21,8 @@ const ASSETS_TO_CACHE = [
   './js/engines/ColorClashEngine.js',
   './js/engines/GlitchEngine.js',
   './js/engines/TextGlitchEngine.js',
-  './js/engines/VanGoghEngine.js'
+  './js/engines/VanGoghEngine.js',
+  './js/engines/MinecraftEngine.js'
 ];
 
 // Service Worker Kurulumu & Önbelleğe Alma

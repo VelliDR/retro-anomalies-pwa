@@ -1,6 +1,7 @@
 /**
  * @file CmykOffsetEngine.js
  * @description Hakiki CMYK Matbaa Tram Noktaları (Halftone Screen) ve Ofset Kayma Motoru.
+ * GCR (Gray Component Replacement) matbaa renk ayrışımı ve hücre merkezli tram örneklemesi içerir.
  */
 
 import { canvasPool } from '../core/CanvasPool.js';
@@ -8,12 +9,16 @@ import { canvasPool } from '../core/CanvasPool.js';
 export class CmykOffsetEngine {
     /**
      * @param {HTMLCanvasElement} sourceCanvas 
-     * @param {number} offsetPx - Matbaa kayma miktarı (px)
-     * @param {number} dotSize - Matbaa tram nokta boyutu (px)
+     * @param {number} offsetPx - Matbaa kayma miktarı (px, app.js scaleFactor ile çarpılarak gelir)
+     * @param {number} dotSize - Matbaa tram nokta boyutu (px, app.js scaleFactor ile çarpılarak gelir)
      */
     render(sourceCanvas, offsetPx = 5, dotSize = 8) {
         const w = sourceCanvas.width;
         const h = sourceCanvas.height;
+
+        // Güvenli parametre sınırları
+        const dSize = Math.max(3, Math.round(dotSize));
+        const offPx = Math.round(offsetPx);
 
         const outputCanvas = canvasPool.getCanvas('cmyk_output', w, h);
         const ctx = outputCanvas.getContext('2d');
@@ -22,74 +27,100 @@ export class CmykOffsetEngine {
         const imgData = srcCtx.getImageData(0, 0, w, h);
         const d = imgData.data;
 
-        // Saf Beyaz Kağıt Zemin
-        ctx.fillStyle = '#faf8f5';
+        // Saf Fildişi Matbaa Kağıdı Zemin
+        ctx.fillStyle = '#fcfaf7';
         ctx.fillRect(0, 0, w, h);
 
-        // Matbaa Mürekkep Çakışması İçin Multiply Modu
+        // Matbaa Mürekkep Çakışması İçin Multiply (Çarpma) Modu
         ctx.globalCompositeOperation = 'multiply';
 
-        // 1. CYAN KATMANI (Sola/Yukarıya Kaymış Tram Noktaları)
-        ctx.fillStyle = '#00ffff';
-        for (let y = 0; y < h; y += dotSize) {
-            for (let x = 0; x < w; x += dotSize) {
-                const i = (y * w + x) * 4;
-                const r = d[i] / 255;
-                const cyanVal = 1 - r; // Kırmızı eksikliği = Cyan miktarı
+        const maxRadius = (dSize / 2) * 1.15;
 
-                if (cyanVal > 0.08) {
-                    const radius = (cyanVal * (dotSize / 2)) * 1.1;
+        // 1. CYAN KATMANI (Sola / Yukarı Kaymış Mürekkep)
+        ctx.fillStyle = '#00e5ff';
+        for (let y = 0; y < h; y += dSize) {
+            for (let x = 0; x < w; x += dSize) {
+                const srcX = Math.min(w - 1, Math.floor(x + dSize / 2));
+                const srcY = Math.min(h - 1, Math.floor(y + dSize / 2));
+                const i = (srcY * w + srcX) * 4;
+
+                const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255, a = d[i + 3] / 255;
+                if (a < 0.1) continue;
+
+                // GCR Siyah Ayrışımı
+                const k = 1 - Math.max(r, g, b);
+                const c = k === 1 ? 0 : (1 - r - k) / (1 - k);
+
+                if (c > 0.04) {
+                    const radius = c * maxRadius;
                     ctx.beginPath();
-                    ctx.arc(x - offsetPx, y - offsetPx / 2, radius, 0, Math.PI * 2);
+                    ctx.arc(x - offPx, y - offPx * 0.5, radius, 0, Math.PI * 2);
                     ctx.fill();
                 }
             }
         }
 
-        // 2. MAGENTA KATMANI (Sağa/Aşağıya Kaymış Tram Noktaları)
-        ctx.fillStyle = '#ff00ff';
-        for (let y = 0; y < h; y += dotSize) {
-            for (let x = 0; x < w; x += dotSize) {
-                const i = (y * w + x) * 4;
-                const g = d[i + 1] / 255;
-                const magVal = 1 - g; // Yeşil eksikliği = Magenta miktarı
+        // 2. MAGENTA KATMANI (Sağa / Aşağı Kaymış Mürekkep)
+        ctx.fillStyle = '#ff007f';
+        for (let y = 0; y < h; y += dSize) {
+            for (let x = 0; x < w; x += dSize) {
+                const srcX = Math.min(w - 1, Math.floor(x + dSize / 2));
+                const srcY = Math.min(h - 1, Math.floor(y + dSize / 2));
+                const i = (srcY * w + srcX) * 4;
 
-                if (magVal > 0.08) {
-                    const radius = (magVal * (dotSize / 2)) * 1.1;
+                const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255, a = d[i + 3] / 255;
+                if (a < 0.1) continue;
+
+                const k = 1 - Math.max(r, g, b);
+                const m = k === 1 ? 0 : (1 - g - k) / (1 - k);
+
+                if (m > 0.04) {
+                    const radius = m * maxRadius;
                     ctx.beginPath();
-                    ctx.arc(x + offsetPx, y + offsetPx / 2, radius, 0, Math.PI * 2);
+                    ctx.arc(x + offPx, y + offPx * 0.5, radius, 0, Math.PI * 2);
                     ctx.fill();
                 }
             }
         }
 
-        // 3. YELLOW KATMANI (Hizalı Tram Noktaları)
-        ctx.fillStyle = '#ffff00';
-        for (let y = 0; y < h; y += dotSize) {
-            for (let x = 0; x < w; x += dotSize) {
-                const i = (y * w + x) * 4;
-                const b = d[i + 2] / 255;
-                const yellowVal = 1 - b; // Mavi eksikliği = Yellow miktarı
+        // 3. YELLOW KATMANI (Hafif Dikey Kaymış Mürekkep)
+        ctx.fillStyle = '#ffeb3b';
+        for (let y = 0; y < h; y += dSize) {
+            for (let x = 0; x < w; x += dSize) {
+                const srcX = Math.min(w - 1, Math.floor(x + dSize / 2));
+                const srcY = Math.min(h - 1, Math.floor(y + dSize / 2));
+                const i = (srcY * w + srcX) * 4;
 
-                if (yellowVal > 0.08) {
-                    const radius = (yellowVal * (dotSize / 2)) * 1.1;
+                const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255, a = d[i + 3] / 255;
+                if (a < 0.1) continue;
+
+                const k = 1 - Math.max(r, g, b);
+                const yVal = k === 1 ? 0 : (1 - b - k) / (1 - k);
+
+                if (yVal > 0.04) {
+                    const radius = yVal * maxRadius;
                     ctx.beginPath();
-                    ctx.arc(x, y, radius, 0, Math.PI * 2);
+                    ctx.arc(x, y + offPx * 0.3, radius, 0, Math.PI * 2);
                     ctx.fill();
                 }
             }
         }
 
-        // 4. KEY / BLACK (KONTUR & AŞIRI KOYULUKLAR)
-        ctx.fillStyle = '#111111';
-        for (let y = 0; y < h; y += dotSize) {
-            for (let x = 0; x < w; x += dotSize) {
-                const i = (y * w + x) * 4;
-                const lum = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255;
-                const blackVal = 1 - lum;
+        // 4. KEY / BLACK KATMANI (GCR Hakiki Matbaa Siyah Tramı)
+        ctx.fillStyle = '#1a1a1a';
+        for (let y = 0; y < h; y += dSize) {
+            for (let x = 0; x < w; x += dSize) {
+                const srcX = Math.min(w - 1, Math.floor(x + dSize / 2));
+                const srcY = Math.min(h - 1, Math.floor(y + dSize / 2));
+                const i = (srcY * w + srcX) * 4;
 
-                if (blackVal > 0.5) { // Sadece koyu yerlere siyah tram at
-                    const radius = ((blackVal - 0.5) * dotSize);
+                const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255, a = d[i + 3] / 255;
+                if (a < 0.1) continue;
+
+                const k = 1 - Math.max(r, g, b);
+
+                if (k > 0.05) {
+                    const radius = k * maxRadius;
                     ctx.beginPath();
                     ctx.arc(x, y, radius, 0, Math.PI * 2);
                     ctx.fill();
