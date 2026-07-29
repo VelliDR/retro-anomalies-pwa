@@ -18,6 +18,7 @@ import { GlitchEngine } from './engines/GlitchEngine.js';
 import { TextGlitchEngine } from './engines/TextGlitchEngine.js';
 import { VanGoghEngine } from './engines/VanGoghEngine.js';
 import { MinecraftEngine } from './engines/MinecraftEngine.js';
+import { SensorCorruptEngine } from './engines/SensorCorruptEngine.js';
 
 class AnomaliesApp {
     constructor() {
@@ -43,7 +44,8 @@ class AnomaliesApp {
             glitch: new GlitchEngine(),
             textglitch: new TextGlitchEngine(),
             vangogh: new VanGoghEngine(),
-            minecraft: new MinecraftEngine()
+            minecraft: new MinecraftEngine(),
+            sensorcorrupt: new SensorCorruptEngine()
         };
 
         this.fullSourceCanvas = null;
@@ -63,7 +65,8 @@ class AnomaliesApp {
             glitch: { intensity: 40 },
             textglitch: { text: 'SYSTEM ERROR', style: 'rgb_shift', fontSize: 42 },
             vangogh: { mode: 2, stepSize: 12, brushMinLength: 10, brushMaxLength: 30, impasto: true },
-            minecraft: { mode: 1, blockSize: 24, paletteKey: 'classic' }
+            minecraft: { mode: 1, blockSize: 24, paletteKey: 'classic' },
+            sensorcorrupt: { mode: 'chaos', noiseIntensity: 55, chaosLevel: 80, lineJitter: true, bitShift: true, seed: 424242 }
         };
 
         this.initEventListeners();
@@ -169,6 +172,29 @@ class AnomaliesApp {
                     p.blockSize,
                     p.paletteKey
                 );
+            case 'sensorcorrupt': {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = targetSourceCanvas.width;
+                tempCanvas.height = targetSourceCanvas.height;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(targetSourceCanvas, 0, 0);
+
+                engineObj.process(
+                    tempCtx, 
+                    tempCanvas.width, 
+                    tempCanvas.height, 
+                    {
+                        mode: p.mode,
+                        noiseIntensity: p.noiseIntensity / 100,
+                        chaosLevel: p.chaosLevel / 100,
+                        lineJitter: p.lineJitter,
+                        bitShift: p.bitShift,
+                        seed: p.seed
+                    },
+                    scaleFactor
+                );
+                return tempCanvas;
+            }
             default:
                 return targetSourceCanvas;
         }
@@ -426,53 +452,109 @@ class AnomaliesApp {
                     </select>
                 </div>
             `;
+        } else if (engine === 'sensorcorrupt') {
+            html = `
+                <div class="param-group">
+                    <label>Arıza Modu</label>
+                    <select id="input-mode">
+                        <option value="chaos" ${p.mode === 'chaos' ? 'selected' : ''}>Mod 2: Kaos (Circuit Bend & Mutasyon)</option>
+                        <option value="standard" ${p.mode === 'standard' ? 'selected' : ''}>Mod 1: Standart (RGB Gürültü)</option>
+                    </select>
+                </div>
+                <div class="param-group" style="margin-top: 12px;">
+                    <label>Gürültü Yoğunluğu: <b id="val-noiseIntensity">${p.noiseIntensity}%</b></label>
+                    <input type="range" id="input-noiseIntensity" min="0" max="140" value="${p.noiseIntensity}">
+                </div>
+
+                <div id="wrapper-chaos" style="display: ${p.mode === 'chaos' ? 'block' : 'none'};">
+                    <div class="param-group" style="margin-top: 12px;">
+                        <label>Sinyal Yırtılma Şiddeti (Kaos): <b id="val-chaosLevel">${p.chaosLevel}%</b></label>
+                        <input type="range" id="input-chaosLevel" min="10" max="100" value="${p.chaosLevel}">
+                    </div>
+                </div>
+
+                <div id="wrapper-standard" style="display: ${p.mode === 'standard' ? 'block' : 'none'};">
+                    <div class="param-group" style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="input-lineJitter" ${p.lineJitter ? 'checked' : ''}>
+                        <label for="input-lineJitter">Yatay Sinyal Kayması (Scanline Jitter)</label>
+                    </div>
+                    <div class="param-group" style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="input-bitShift" ${p.bitShift ? 'checked' : ''}>
+                        <label for="input-bitShift">Bit-Shift Taşması (Neon Patlama)</label>
+                    </div>
+                </div>
+
+                <div class="param-group" style="margin-top: 16px;">
+                    <button type="button" id="btn-reroll-seed" class="action-btn" style="width: 100%; padding: 8px; cursor: pointer;">
+                        🎲 Farklı Yırtılma Varyasyonu Üret
+                    </button>
+                </div>
+            `;
         }
 
         this.paramsContainer.innerHTML = html;
         this.bindDynamicParamEvents();
     }
 
-bindDynamicParamEvents() {
-    const engine = this.activeEngine;
+    bindDynamicParamEvents() {
+        const engine = this.activeEngine;
 
-    this.paramsContainer.querySelectorAll('input, select').forEach(input => {
-        const updateParam = (e) => {
-            const key = e.target.id.replace('input-', '');
-            let value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
-
-            if (e.target.type === 'range') value = parseFloat(value);
-            
-            // DÜZELTME: Sadece sayısal modları (1, 2, 3) int yap, metin modlarını ('rainbow', 'emerald') bozma
-            if (key === 'mode' && !isNaN(value)) {
-                value = parseInt(value, 10);
+        if (engine === 'sensorcorrupt') {
+            const rerollBtn = document.getElementById('btn-reroll-seed');
+            if (rerollBtn) {
+                rerollBtn.addEventListener('click', () => {
+                    this.params.sensorcorrupt.seed = Math.floor(Math.random() * 999999);
+                    this.render();
+                });
             }
+        }
 
-            if (key === 'charSetKey') {
-                const customWrapper = document.getElementById('custom-text-wrapper');
-                if (customWrapper) {
-                    customWrapper.style.display = value === 'custom' ? 'block' : 'none';
+        this.paramsContainer.querySelectorAll('input, select').forEach(input => {
+            const updateParam = (e) => {
+                const key = e.target.id.replace('input-', '');
+                let value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+
+                if (e.target.type === 'range') value = parseFloat(value);
+                
+                if (key === 'mode' && !isNaN(value)) {
+                    value = parseInt(value, 10);
                 }
-            }
 
-            this.params[engine][key] = value;
+                if (key === 'charSetKey') {
+                    const customWrapper = document.getElementById('custom-text-wrapper');
+                    if (customWrapper) {
+                        customWrapper.style.display = value === 'custom' ? 'block' : 'none';
+                    }
+                }
 
-            const valLabel = document.getElementById(`val-${key}`);
-            if (valLabel) {
-                let suffix = '';
-                if (key === 'contrastBoost') suffix = 'x';
-                else if (['wear', 'tonerNoise', 'intensity'].includes(key)) suffix = '%';
-                else if (typeof value === 'number') suffix = 'px';
+                if (key === 'mode' && engine === 'sensorcorrupt') {
+                    const wrapChaos = document.getElementById('wrapper-chaos');
+                    const wrapStd = document.getElementById('wrapper-standard');
+                    if (wrapChaos && wrapStd) {
+                        wrapChaos.style.display = value === 'chaos' ? 'block' : 'none';
+                        wrapStd.style.display = value === 'standard' ? 'block' : 'none';
+                    }
+                }
 
-                valLabel.textContent = `${value}${suffix}`;
-            }
+                this.params[engine][key] = value;
 
-            this.render();
-        };
+                const valLabel = document.getElementById(`val-${key}`);
+                if (valLabel) {
+                    let suffix = '';
+                    if (key === 'contrastBoost') suffix = 'x';
+                    else if (['wear', 'tonerNoise', 'intensity', 'noiseIntensity', 'chaosLevel'].includes(key)) suffix = '%';
+                    else if (typeof value === 'number') suffix = 'px';
 
-        input.addEventListener('input', updateParam);
-        input.addEventListener('change', updateParam);
-    });
-}
+                    valLabel.textContent = `${value}${suffix}`;
+                }
+
+                this.render();
+            };
+
+            input.addEventListener('input', updateParam);
+            input.addEventListener('change', updateParam);
+        });
+    }
 }
 
 window.addEventListener('DOMContentLoaded', () => new AnomaliesApp());

@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'anomalies-v2.08-vangogh';
+const CACHE_NAME = 'anomalies-v2.08-vangogh minecraft';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

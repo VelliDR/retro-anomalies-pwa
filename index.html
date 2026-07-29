@@ -1,11 +1,17 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#000000">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Anomalies // Retro Media Lab</title>
+    
+    <!-- PWA & Tema -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#000000">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+
     <link rel="stylesheet" href="css/main.css">
     
     <!-- Yerel HEIC Kütüphanesi ve Ana Modül -->
@@ -53,6 +59,10 @@
                     <button class="engine-btn" data-engine="glitch">💾 Datamosh</button>
                     <button class="engine-btn" data-engine="textglitch">🔤 Glitch Tipografi</button>
                     <button class="engine-btn" data-engine="vangogh">🎨 Van Gogh</button>
+                    <button class="engine-btn" data-engine="sensorcorrupt">
+    <span class="icon">🔌</span>
+    <span>Sensor Corrupt</span>
+</button>
                     <button class="engine-btn" data-engine="minecraft">🎮 Minecraft</button>
                 </div>
             </div>
@@ -73,7 +83,8 @@
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js')
+      // Göreceli yol (sw.js) sayesinde her ortamda sorunsuz çalışır
+      navigator.serviceWorker.register('./sw.js')
         .then((reg) => console.log('Service Worker kayıt başarılı:', reg.scope))
         .catch((err) => console.error('Service Worker kaydı başarısız:', err));
     });
