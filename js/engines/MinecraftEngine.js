@@ -1,6 +1,7 @@
 /**
  * @file MinecraftEngine.js
  * @description Anomalies Retro Medya Laboratuvarı için Çözünürlükten Bağımsız Voxel & Doku Motoru.
+ * 2D Düz Harita ve Tam Hizalanmış (Centered) 2.5D İzometrik Voxel modlarını içerir.
  */
 
 import { canvasPool } from '../core/CanvasPool.js';
@@ -152,7 +153,7 @@ export class MinecraftEngine {
     }
 
     /**
-     * MOD 1: 2D Düz Blok Haritası (Düzeltildi)
+     * MOD 1: 2D Düz Blok Haritası
      */
     render2DFlatTexturedMap(ctx, pixels, width, height, bSize, paletteKey) {
         for (let y = 0; y < height; y += bSize) {
@@ -164,22 +165,18 @@ export class MinecraftEngine {
                 const r = pixels[pIdx], g = pixels[pIdx + 1], b = pixels[pIdx + 2], a = pixels[pIdx + 3] / 255;
                 if (a < 0.1) continue;
 
-                // GERÇEK PARLAKLIK HESABI (Düzeltildi)
                 const lum = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
 
                 const texName = this.selectBlockByColorAndHeight(r, g, b, lum);
                 const tex = this.textures[texName] || this.textures['dirt'];
 
-                // 1. Dokuyu blok boyutunda çiz
                 ctx.drawImage(tex, x, y, bSize, bSize);
 
-                // 2. Renkli Palet Modunda orijinal fotoğrafın renklerini doku üzerine harmanla
                 if (paletteKey === 'colorful') {
                     ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.50)`;
                     ctx.fillRect(x, y, bSize, bSize);
                 }
 
-                // Grid konturu
                 ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
                 ctx.lineWidth = 0.5;
                 ctx.strokeRect(x, y, bSize, bSize);
@@ -187,6 +184,9 @@ export class MinecraftEngine {
         }
     }
 
+    /**
+     * MOD 2: 2.5D İzometrik Voxel Küpleri (Merkez Hizalamalı Bounding Box Fix)
+     */
     renderAdvancedIsometricVoxels(ctx, pixels, width, height, bSize, scale) {
         const sw = Math.floor(width / bSize);
         const sh = Math.floor(height / bSize);
@@ -214,15 +214,43 @@ export class MinecraftEngine {
         const isoH = Math.round(bSize * 0.55);
         const sideH = Math.round(bSize * 0.75);
 
+        // 1. DINAMIK BOUNDING BOX MERKEZLEME HESABI
+        let minIsoY = Infinity;
+        let maxIsoY = -Infinity;
+
+        for (let gy = 0; gy < sh; gy++) {
+            for (let gx = 0; gx < sw; gx++) {
+                const idx = gy * sw + gx;
+                const hStack = heightMap[idx];
+                const vOffset = hStack * (sideH * 0.5);
+                const isoY = (gy + gx) * (isoH / 2);
+
+                const topY = isoY - vOffset - (isoH / 2);
+                const bottomY = isoY + sideH + (isoH / 2);
+
+                if (topY < minIsoY) minIsoY = topY;
+                if (bottomY > maxIsoY) maxIsoY = bottomY;
+            }
+        }
+
+        const minIsoX = -(sh - 1) * (isoW / 2);
+        const maxIsoX = (sw - 1) * (isoW / 2);
+        const isoCenterX = (minIsoX + maxIsoX) / 2;
+        const isoCenterY = (minIsoY + maxIsoY) / 2;
+
+        // Tuvalin tam ortasına hizalayacak dikey ve yatay ofsetler
+        const offsetX = (width / 2) - isoCenterX;
+        const offsetY = (height / 2) - isoCenterY;
+
+        // 2. BACK-TO-FRONT İZOMETRİK ÇİZİM
         for (let gy = 0; gy < sh; gy++) {
             for (let gx = 0; gx < sw; gx++) {
                 const idx = gy * sw + gx;
                 const hStack = heightMap[idx];
                 const cell = colorMap[idx];
 
-                const centerX = width / 2;
-                const drawX = centerX + (gx - gy) * (isoW / 2);
-                const drawY = (gy + gx) * (isoH / 2);
+                const drawX = offsetX + (gx - gy) * (isoW / 2);
+                const drawY = offsetY + (gy + gx) * (isoH / 2);
                 const vOffset = hStack * (sideH * 0.5);
 
                 let shadowFactor = 1.0;

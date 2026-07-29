@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'anomalies-v3,2-vangogh';
+const CACHE_NAME = 'anomalies-v2.08-vangogh';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
