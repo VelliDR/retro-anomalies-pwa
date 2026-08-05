@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'anomalies-v2.08-vangogh minecraft kartpostal';
+const CACHE_NAME = 'anomalies-v2.08- lanet olsun hayat ve fikirler zehri';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

@@ -1,14 +1,14 @@
 /**
- * @file VanGoghEngine.js (Tam, Optimize & Bellek Dostu)
- * @description Orijinal Van Gogh efektini birebir korur; CanvasPool entegrasyonu,
- * GC (Garbage Collection) optimizasyonu ve bellek sızıntısı önlemleri içerir.
+ * @file VanGoghEngine.js
+ * @description Anomalies Retro Medya Laboratuvarı için Çözünürlükten Bağımsız Van Gogh Motoru.
+ *              Geliştirilmiş 3D Impasto rölyefi, fırça baskı incelmesi (tapering) ve optik renk titreşimi.
  */
 
 import { canvasPool } from '../core/CanvasPool.js';
 
 export class VanGoghEngine {
     constructor() {
-        // Perlin permütasyon tablosu
+        // Permütasyon Tablosu (Perlin Noise)
         this.p = new Int32Array(512);
         const perm = [
             151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,
@@ -28,83 +28,71 @@ export class VanGoghEngine {
             this.p[i] = perm[i];
             this.p[256 + i] = perm[i];
         }
-
-        // Önbellek değişkenleri
-        this.cachedSource = null;
-        this.baseLayerCanvas = null;
-        this.cachedTensorField = null;
     }
 
     render(sourceCanvas, mode = 2, stepSize = 12, brushMinLength = 10, brushMaxLength = 30, impasto = true) {
         const width = sourceCanvas.width;
         const height = sourceCanvas.height;
+
         const maxDim = Math.max(width, height);
         const scale = maxDim / 1200;
-        const isPreview = (scale <= 1.0);
 
         const targetCanvas = canvasPool.getCanvas('vangogh_output', width, height);
         const targetCtx = targetCanvas.getContext('2d');
         const srcCtx = sourceCanvas.getContext('2d');
+
         const imgData = srcCtx.getImageData(0, 0, width, height);
         const pixels = imgData.data;
 
-        // 1. Astar katmanı (blur) – canvasPool üzerinden bellek dostu yönetim
-        if (this.cachedSource !== sourceCanvas || !this.baseLayerCanvas) {
-            this.baseLayerCanvas = canvasPool.getCanvas('vangogh_base', width, height);
-            const baseCtx = this.baseLayerCanvas.getContext('2d');
-            baseCtx.filter = `blur(${Math.round(12 * scale)}px) saturate(140%) contrast(110%)`;
-            baseCtx.drawImage(sourceCanvas, 0, 0, width, height);
-            baseCtx.filter = 'none';
-            this.cachedSource = sourceCanvas;
-        }
-        targetCtx.drawImage(this.baseLayerCanvas, 0, 0);
+        // 1. ASTAR KATMANI
+        targetCtx.save();
+        targetCtx.filter = `blur(${Math.round(12 * scale)}px) saturate(145%) contrast(110%)`;
+        targetCtx.drawImage(sourceCanvas, 0, 0, width, height);
+        targetCtx.restore();
 
-        // 2. Tensör alanı – önbellekli
-        if (this.cachedSource !== sourceCanvas || !this.cachedTensorField) {
-            this.cachedTensorField = this.computePaddedStructureTensor(pixels, width, height, scale);
-        }
-        const tensorField = this.cachedTensorField;
+        // 2. TENSÖR ALANI HESABI
+        const tensorField = this.computePaddedStructureTensor(pixels, width, height, scale);
 
-        // Önizleme / yüksek çıktı yoğunluk faktörü
-        const densityFactor = isPreview ? 0.5 : 1.0;
-
-        // 3. Katman: Kaba zemin
+        // 3. KATMAN: KÜTLEŞEL ZEMİN FIRÇALARI
         this.renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, scale, {
-            density: 0.012 * densityFactor,
+            density: 0.014,
             stepLength: stepSize * 0.35,
             maxSteps: 12,
-            brushWidth: brushMinLength * 0.55,
-            bristleCount: isPreview ? 4 : 6,
-            alpha: 0.55,
+            brushWidth: brushMinLength * 0.58,
+            bristleCount: 6,
+            alpha: 0.58,
             turbulence: 0.12,
-            impasto: false
+            impasto: false,
+            vibration: true
         });
 
-        // 4. Katman: Ana fırçalar
+        // 4. KATMAN: ANA ANATOMİK FIRÇALAR
         const mainMaxSteps = Math.max(4, Math.round(brushMaxLength / (stepSize * 0.25)));
         this.renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, scale, {
-            density: 0.040 * densityFactor,
+            density: 0.042,
             stepLength: stepSize * 0.25,
             maxSteps: mainMaxSteps,
-            brushWidth: brushMinLength * 0.32,
-            bristleCount: isPreview ? 5 : 8,
-            alpha: 0.90,
-            turbulence: 0.22,
-            impasto: impasto
+            brushWidth: brushMinLength * 0.35,
+            bristleCount: 8,
+            alpha: 0.92,
+            turbulence: 0.20,
+            impasto: impasto,
+            vibration: true
         });
 
-        // 5. Katman: Highlight detayları
+        // 5. KATMAN: HIGHLIGHT & DETAY VURGULARI
         const detailMaxSteps = Math.max(3, Math.round((brushMinLength * 0.6) / (stepSize * 0.18)));
         this.renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, scale, {
-            density: 0.018 * densityFactor,
+            density: 0.020,
             stepLength: stepSize * 0.18,
             maxSteps: detailMaxSteps,
             brushWidth: brushMinLength * 0.18,
-            bristleCount: isPreview ? 2 : 4,
+            bristleCount: 4,
             alpha: 0.95,
             turbulence: 0.08,
-            impasto: false,
-            highlightOnly: true
+            impasto: impasto,
+            highlightOnly: true,
+            vibration: false
         });
 
         return targetCanvas;
@@ -192,7 +180,7 @@ export class VanGoghEngine {
 
             const hsl = this.rgbToHsl(r, g, b);
 
-            if (config.highlightOnly && hsl.l < 0.6) continue;
+            if (config.highlightOnly && hsl.l < 0.55) continue;
 
             const pathPoints = this.traceStreamline(rx, ry, width, height, tensorField, mode, scale, config);
 
@@ -242,60 +230,75 @@ export class VanGoghEngine {
     }
 
     drawMultiBristleStroke(ctx, points, baseHsl, scale, config) {
+        ctx.save();
+
         const bristleCount = config.bristleCount;
-        const primarySat = Math.min(100, Math.round(baseHsl.s * 125));
+        const primarySat = Math.min(100, Math.round(baseHsl.s * 130));
         const primaryLum = Math.round(baseHsl.l * 100);
 
-        // Context ayarlarını döngü dışına çıkararak CPU fırça döngüsünü hızlandırıyoruz
-        ctx.lineWidth = Math.max(0.6 * scale, (config.brushWidth / bristleCount) * 1.2);
+        // Optik Renk Titreşimi (%15 ihtimalle mikro zıt renk kayması)
+        let hueShiftBase = 0;
+        if (config.vibration && Math.random() < 0.15) {
+            hueShiftBase = Math.random() < 0.5 ? 20 : -20;
+        }
+
+        const baseLineWidth = Math.max(0.7 * scale, (config.brushWidth / bristleCount) * 1.2);
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
         for (let b = 0; b < bristleCount; b++) {
             const offsetFactor = (b / (bristleCount - 1) - 0.5) * config.brushWidth;
 
-            const bristleLumShift = (Math.random() - 0.5) * 12;
-            const bristleHueShift = (Math.random() - 0.5) * 8;
+            const bristleLumShift = (Math.random() - 0.5) * 14;
+            const bristleHueShift = (Math.random() - 0.5) * 8 + hueShiftBase;
 
             const bristleHue = (baseHsl.h + bristleHueShift + 360) % 360;
             const bristleLum = Math.max(0, Math.min(100, primaryLum + bristleLumShift));
 
-            // Hızlı tamsayı kesmesi (| 0) ile Garbage Collector (GC) yükünü ve String parsing süresini azaltıyoruz
             ctx.strokeStyle = `hsla(${bristleHue | 0}, ${primarySat | 0}%, ${bristleLum | 0}%, ${config.alpha})`;
-            ctx.beginPath();
 
-            for (let i = 0; i < points.length; i++) {
-                const pt = points[i];
+            // Segment segment çizerek fırça baskı incelmesi (Tapering) uygulama
+            for (let i = 0; i < points.length - 1; i++) {
+                const p1 = points[i];
+                const p2 = points[i + 1];
+
+                const progress = i / (points.length - 1);
+                const pressure = Math.sin(progress * Math.PI); // Başta/sonda ince, ortada kalın
+                ctx.lineWidth = baseLineWidth * (0.4 + pressure * 0.6);
 
                 let nx = 0, ny = 0;
-                if (i < points.length - 1) {
-                    const nextPt = points[i + 1];
-                    const dx = nextPt.x - pt.x;
-                    const dy = nextPt.y - pt.y;
-                    const len = Math.sqrt(dx * dx + dy * dy) || 1;
-                    nx = -dy / len;
-                    ny = dx / len;
-                }
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                nx = -dy / len;
+                ny = dx / len;
 
-                const bx = pt.x + nx * offsetFactor;
-                const by = pt.y + ny * offsetFactor;
-
-                if (i === 0) {
-                    ctx.moveTo(bx, by);
-                } else {
-                    ctx.lineTo(bx, by);
-                }
+                ctx.beginPath();
+                ctx.moveTo(p1.x + nx * offsetFactor, p1.y + ny * offsetFactor);
+                ctx.lineTo(p2.x + nx * offsetFactor, p2.y + ny * offsetFactor);
+                ctx.stroke();
             }
-            ctx.stroke();
         }
 
-        // Impasto kabartması
-        if (config.impasto && scale > 1.0) {
-            ctx.strokeStyle = `rgba(255, 255, 255, ${config.alpha * 0.35})`;
-            ctx.lineWidth = Math.max(0.5 * scale, config.brushWidth * 0.2);
-            ctx.beginPath();
+        // Çift Yönlü 3D Impasto Rölyefi
+        if (config.impasto && scale > 0.8) {
+            const offsetPx = 0.85 * scale;
 
-            const offsetPx = 0.8 * scale;
+            // 1. Gölge Kenarı (Gölgede kalan yağlı boya katmanı)
+            ctx.strokeStyle = `rgba(0, 0, 0, ${config.alpha * 0.22})`;
+            ctx.lineWidth = Math.max(0.5 * scale, config.brushWidth * 0.15);
+            ctx.beginPath();
+            for (let i = 0; i < points.length; i++) {
+                const pt = points[i];
+                if (i === 0) ctx.moveTo(pt.x + offsetPx, pt.y + offsetPx);
+                else ctx.lineTo(pt.x + offsetPx, pt.y + offsetPx);
+            }
+            ctx.stroke();
+
+            // 2. Işık Kenarı (Işık vuran parlak kuruma sırtı)
+            ctx.strokeStyle = `rgba(255, 255, 255, ${config.alpha * 0.38})`;
+            ctx.lineWidth = Math.max(0.5 * scale, config.brushWidth * 0.15);
+            ctx.beginPath();
             for (let i = 0; i < points.length; i++) {
                 const pt = points[i];
                 if (i === 0) ctx.moveTo(pt.x - offsetPx, pt.y - offsetPx);
@@ -303,9 +306,10 @@ export class VanGoghEngine {
             }
             ctx.stroke();
         }
+
+        ctx.restore();
     }
 
-    // ---------- Perlin gürültüsü ----------
     fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
     lerp(t, a, b) { return a + t * (b - a); }
     grad(hash, x, y) {

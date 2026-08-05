@@ -1,7 +1,7 @@
 /**
- * @file GlitchEngine.js (Spider-Verse Dynamic Color Shards)
- * @description Sabit neon palet yerine, üstüne bindiği piksele bağlı rastgele 
- *              yakın/uzak HSL renkleri üreten dinamik cam kırığı anomali motoru.
+ * @file GlitchEngine.js (Spider-Verse Ultimate Edition)
+ * @description Çift renkli kromatik konturlar, kırık içi hız çizgileri,
+ *              hayalet iz (frame-skip), lokal Ben-Day maskelemesi ve haptic geribildirim.
  */
 
 import { canvasPool } from '../core/CanvasPool.js';
@@ -11,6 +11,9 @@ export class GlitchEngine {
         this.benDayPattern = null;
     }
 
+    /**
+     * Çizgi roman Ben-Day matbaa noktaları deseni (Önbellekli)
+     */
     _getBenDayPattern(ctx, scale) {
         if (!this.benDayPattern) {
             const size = Math.max(4, Math.round(5 * scale));
@@ -18,9 +21,9 @@ export class GlitchEngine {
             const patCtx = patCanvas.getContext('2d');
             
             patCtx.clearRect(0, 0, size, size);
-            patCtx.fillStyle = '#1e1e24';
+            patCtx.fillStyle = '#111116';
             patCtx.beginPath();
-            patCtx.arc(size / 2, size / 2, size / 4.5, 0, Math.PI * 2);
+            patCtx.arc(size / 2, size / 2, size / 4.2, 0, Math.PI * 2);
             patCtx.fill();
 
             this.benDayPattern = ctx.createPattern(patCanvas, 'repeat');
@@ -49,6 +52,16 @@ export class GlitchEngine {
         return { h: h * 360, s: s * 100, l: l * 100 };
     }
 
+    /**
+     * Mobil cihazlarda hafif titreşim geribildirimi tetikler
+     */
+    _triggerHaptic(normIntensity) {
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            const duration = Math.min(25, Math.floor(normIntensity * 20));
+            navigator.vibrate(duration);
+        }
+    }
+
     render(sourceCanvas, intensity = 40) {
         const w = sourceCanvas.width;
         const h = sourceCanvas.height;
@@ -59,6 +72,9 @@ export class GlitchEngine {
         const outputCanvas = canvasPool.getCanvas('glitch_output', w, h);
         const ctx = outputCanvas.getContext('2d');
         const srcCtx = sourceCanvas.getContext('2d');
+
+        // Haptic geribildirim tetikle
+        this._triggerHaptic(normIntensity);
 
         // 1. ADIM: Temel Görsel Çizimi
         ctx.clearRect(0, 0, w, h);
@@ -92,7 +108,7 @@ export class GlitchEngine {
         ctx.drawImage(sourceCanvas, shiftPx, -shiftPx * 0.2);
         ctx.restore();
 
-        // 4. ADIM: DİNAMİK PİKSEL RENKLİ CAM KIRIKLARI
+        // 4. ADIM: GELİŞMİŞ CAM KIRIKLARI (Ghosting, Speed Lines, Dual Chromatic & Masked Ben-Day)
         const shardCount = Math.floor(3 + normIntensity * 6);
         const maxShift = w * 0.20 * normIntensity;
 
@@ -106,28 +122,24 @@ export class GlitchEngine {
             const shiftX = (Math.random() - 0.5) * maxShift;
             const shiftY = (Math.random() - 0.5) * (maxShift * 0.4);
 
-            // A. Denk gelen merkez piksel rengini oku
+            // A. Denk gelen merkez piksel renginden HSL türet
             const sampleX = Math.min(w - 1, Math.max(0, Math.floor(cx)));
             const sampleY = Math.min(h - 1, Math.max(0, Math.floor(cy)));
             const pxData = srcCtx.getImageData(sampleX, sampleY, 1, 1).data;
             const baseHsl = this._rgbToHsl(pxData[0], pxData[1], pxData[2]);
 
-            // B. Rastgele Yakın (±20°) veya Uzak / Komplementer (120°-240°) Renk Sapması
             const isFarColor = Math.random() < 0.5;
-            const hueShift = isFarColor 
-                ? (120 + Math.random() * 120) 
-                : ((Math.random() - 0.5) * 40);
+            const hueShift = isFarColor ? (120 + Math.random() * 120) : ((Math.random() - 0.5) * 40);
 
             const dynamicHue = Math.round((baseHsl.h + hueShift + 360) % 360);
             const dynamicSat = Math.round(Math.max(40, Math.min(100, baseHsl.s + (Math.random() - 0.5) * 30)));
             const dynamicLum = Math.round(Math.max(30, Math.min(80, baseHsl.l + (Math.random() - 0.5) * 30)));
-
             const dynamicColorStr = `hsl(${dynamicHue}, ${dynamicSat}%, ${dynamicLum}%)`;
 
             ctx.save();
             ctx.beginPath();
 
-            // Düzensiz 4-5 köşeli keskin cam kırığı
+            // Düzensiz keskin poligon patikası
             const hw = shardW * 0.5;
             const hh = shardH * 0.5;
             ctx.moveTo(cx - hw + (Math.random() - 0.5) * hw * 0.4, cy - hh + (Math.random() - 0.5) * hh * 0.4);
@@ -135,34 +147,64 @@ export class GlitchEngine {
             ctx.lineTo(cx + hw * 0.8 + (Math.random() - 0.5) * hw * 0.4, cy + hh + (Math.random() - 0.5) * hh * 0.4);
             ctx.lineTo(cx - hw * 0.7 + (Math.random() - 0.5) * hw * 0.4, cy + hh * 0.8 + (Math.random() - 0.5) * hh * 0.4);
             ctx.closePath();
-            ctx.clip();
+            ctx.clip(); // Tüm çizimler bu kırık alanına maskelenir
 
-            // C. Kaydırılmış kırık parçayı çiz
+            // B. HAYALET İZ (Frame-Skip Ghosting)
+            ctx.globalAlpha = 0.35;
+            ctx.drawImage(sourceCanvas, shiftX * 0.4, shiftY * 0.4);
+
+            // C. Asıl Kaydırılmış Kırık Görseli
+            ctx.globalAlpha = 1.0;
             ctx.drawImage(sourceCanvas, shiftX, shiftY);
 
-            // D. Dinamik Renk Tonlama (Difference harmanlaması ile)
+            // D. Dinamik Renk Tonlama (Difference harmanlaması)
             ctx.globalCompositeOperation = 'difference';
             ctx.globalAlpha = 0.50;
             ctx.fillStyle = dynamicColorStr;
             ctx.fillRect(cx - shardW, cy - shardH, shardW * 2, shardH * 2);
 
-            // E. Kenar Konturu (Türetilen dinamik renk ile)
+            // E. LOKAL BEN-DAY TRAM MASKESİ (Sadece kırık içine özel matbaa dokusu)
+            if (normIntensity > 0.15) {
+                ctx.globalCompositeOperation = 'multiply';
+                ctx.globalAlpha = 0.22;
+                ctx.fillStyle = this._getBenDayPattern(ctx, scale);
+                ctx.fillRect(cx - shardW, cy - shardH, shardW * 2, shardH * 2);
+            }
+
+            // F. AKSİYON / HIZ ÇİZGİLERİ (Speed Lines)
+            ctx.globalCompositeOperation = 'overlay';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+            ctx.lineWidth = Math.max(1, Math.round(1.2 * scale));
+            
+            const lineCount = Math.floor(2 + Math.random() * 4);
+            for (let l = 0; l < lineCount; l++) {
+                const ly = cy - hh + Math.random() * shardH;
+                ctx.beginPath();
+                ctx.moveTo(cx - hw, ly);
+                ctx.lineTo(cx + hw, ly + (Math.random() - 0.5) * 12 * scale);
+                ctx.stroke();
+            }
+
+            // G. ÇİFT RENKLİ KROMATİK KONTUR (3D Cam Prizma Kenarları)
             ctx.globalCompositeOperation = 'source-over';
-            ctx.globalAlpha = 0.90;
-            ctx.strokeStyle = dynamicColorStr;
-            ctx.lineWidth = Math.max(2, Math.round(2.5 * scale));
-            ctx.stroke();
+            ctx.lineWidth = Math.max(1.5, Math.round(2 * scale));
 
-            ctx.restore();
-        }
-
-        // 5. ADIM: BEN-DAY MATBAA TRAM NOKTALARI
-        if (normIntensity > 0.2) {
+            // Cyan Kontur (Hafif Sol-Üst Kayma)
             ctx.save();
-            ctx.globalCompositeOperation = 'multiply';
-            ctx.globalAlpha = 0.12 * normIntensity;
-            ctx.fillStyle = this._getBenDayPattern(ctx, scale);
-            ctx.fillRect(0, 0, w, h);
+            ctx.translate(-1.8 * scale, -1.8 * scale);
+            ctx.strokeStyle = '#00f0ff';
+            ctx.globalAlpha = 0.85;
+            ctx.stroke();
+            ctx.restore();
+
+            // Magenta Kontur (Hafif Sağ-Alt Kayma)
+            ctx.save();
+            ctx.translate(1.8 * scale, 1.8 * scale);
+            ctx.strokeStyle = '#ff0055';
+            ctx.globalAlpha = 0.85;
+            ctx.stroke();
+            ctx.restore();
+
             ctx.restore();
         }
 

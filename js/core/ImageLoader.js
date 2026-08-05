@@ -22,7 +22,7 @@ export class ImageLoader {
                     const convertedBlob = await window.heic2any({
                         blob: file,
                         toType: 'image/jpeg',
-                        quality: 0.92
+                        quality: 0.95
                     });
                     targetFile = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
                 } catch (err) {
