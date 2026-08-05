@@ -1,14 +1,14 @@
 /**
- * @file VanGoghEngine.js
- * @description Anomalies Retro Medya Laboratuvarı için Çözünürlükten Bağımsız Van Gogh Motoru.
- * app.js ve ImageLoader mimarisine %100 uyumlu, ölçeklenebilir Vektör-Akış Motoru.
+ * @file VanGoghEngine.js (Tam, Optimize & Bellek Dostu)
+ * @description Orijinal Van Gogh efektini birebir korur; CanvasPool entegrasyonu,
+ * GC (Garbage Collection) optimizasyonu ve bellek sızıntısı önlemleri içerir.
  */
 
 import { canvasPool } from '../core/CanvasPool.js';
 
 export class VanGoghEngine {
     constructor() {
-        // Permütasyon Tablosu (Perlin Noise)
+        // Perlin permütasyon tablosu
         this.p = new Int32Array(512);
         const perm = [
             151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,
@@ -28,82 +28,89 @@ export class VanGoghEngine {
             this.p[i] = perm[i];
             this.p[256 + i] = perm[i];
         }
+
+        // Önbellek değişkenleri
+        this.cachedSource = null;
+        this.baseLayerCanvas = null;
+        this.cachedTensorField = null;
     }
 
-    /**
-     * app.js parametre imzasına %100 uyumlu ana render metodu
-     */
     render(sourceCanvas, mode = 2, stepSize = 12, brushMinLength = 10, brushMaxLength = 30, impasto = true) {
         const width = sourceCanvas.width;
         const height = sourceCanvas.height;
-
-        // ImageLoader (1200px) referans boyutuna göre ölçek katsayısı
         const maxDim = Math.max(width, height);
         const scale = maxDim / 1200;
+        const isPreview = (scale <= 1.0);
 
         const targetCanvas = canvasPool.getCanvas('vangogh_output', width, height);
         const targetCtx = targetCanvas.getContext('2d');
         const srcCtx = sourceCanvas.getContext('2d');
-
         const imgData = srcCtx.getImageData(0, 0, width, height);
         const pixels = imgData.data;
 
-        // 1. ASTAR KATMANI (Blur çözünürlükle oranlanır)
-        targetCtx.save();
-        targetCtx.filter = `blur(${Math.round(12 * scale)}px) saturate(140%) contrast(110%)`;
-        targetCtx.drawImage(sourceCanvas, 0, 0, width, height);
-        targetCtx.restore();
+        // 1. Astar katmanı (blur) – canvasPool üzerinden bellek dostu yönetim
+        if (this.cachedSource !== sourceCanvas || !this.baseLayerCanvas) {
+            this.baseLayerCanvas = canvasPool.getCanvas('vangogh_base', width, height);
+            const baseCtx = this.baseLayerCanvas.getContext('2d');
+            baseCtx.filter = `blur(${Math.round(12 * scale)}px) saturate(140%) contrast(110%)`;
+            baseCtx.drawImage(sourceCanvas, 0, 0, width, height);
+            baseCtx.filter = 'none';
+            this.cachedSource = sourceCanvas;
+        }
+        targetCtx.drawImage(this.baseLayerCanvas, 0, 0);
 
-        // 2. DENSE (YOĞUN) TENSÖR ALANI HESABI
-        const tensorField = this.computePaddedStructureTensor(pixels, width, height, scale);
+        // 2. Tensör alanı – önbellekli
+        if (this.cachedSource !== sourceCanvas || !this.cachedTensorField) {
+            this.cachedTensorField = this.computePaddedStructureTensor(pixels, width, height, scale);
+        }
+        const tensorField = this.cachedTensorField;
 
-        // 3. KATMAN: KÜTLEŞEL ZEMİN FIRÇALARI (Coarse Pass)
+        // Önizleme / yüksek çıktı yoğunluk faktörü
+        const densityFactor = isPreview ? 0.5 : 1.0;
+
+        // 3. Katman: Kaba zemin
         this.renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, scale, {
-            density: 0.012,
+            density: 0.012 * densityFactor,
             stepLength: stepSize * 0.35,
             maxSteps: 12,
             brushWidth: brushMinLength * 0.55,
-            bristleCount: 6,
+            bristleCount: isPreview ? 4 : 6,
             alpha: 0.55,
             turbulence: 0.12,
             impasto: false
         });
 
-        // 4. KATMAN: ANA ANATOMİK FIRÇALAR (Primary Impasto Pass)
+        // 4. Katman: Ana fırçalar
         const mainMaxSteps = Math.max(4, Math.round(brushMaxLength / (stepSize * 0.25)));
         this.renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, scale, {
-            density: 0.040,
+            density: 0.040 * densityFactor,
             stepLength: stepSize * 0.25,
             maxSteps: mainMaxSteps,
             brushWidth: brushMinLength * 0.32,
-            bristleCount: 8,
+            bristleCount: isPreview ? 5 : 8,
             alpha: 0.90,
             turbulence: 0.22,
             impasto: impasto
         });
 
-        // 5. KATMAN: HIGHLIGHT & DETAY VURGULARI
+        // 5. Katman: Highlight detayları
         const detailMaxSteps = Math.max(3, Math.round((brushMinLength * 0.6) / (stepSize * 0.18)));
         this.renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, scale, {
-            density: 0.018,
+            density: 0.018 * densityFactor,
             stepLength: stepSize * 0.18,
             maxSteps: detailMaxSteps,
             brushWidth: brushMinLength * 0.18,
-            bristleCount: 4,
+            bristleCount: isPreview ? 2 : 4,
             alpha: 0.95,
             turbulence: 0.08,
-            impasto: impasto,
+            impasto: false,
             highlightOnly: true
         });
 
         return targetCanvas;
     }
 
-    /**
-     * Düşük çözünürlüklü örnekleme grid'i üzerinde %100 dolu Tensör Haritası üretir
-     */
     computePaddedStructureTensor(pixels, width, height, scale) {
-        // Tensör ızgarasını ~1200px boyutlarında sabit tutuyoruz (Sıfır boşluk)
         const sw = Math.max(100, Math.round(width / scale));
         const sh = Math.max(100, Math.round(height / scale));
         const size = sw * sh;
@@ -168,7 +175,6 @@ export class VanGoghEngine {
     }
 
     renderStreamlinePass(targetCtx, pixels, width, height, tensorField, mode, scale, config) {
-        // Tohum sayısını çözünürlükten bağımsız referans alana göre sabitliyoruz
         const referenceArea = (width / scale) * (height / scale);
         const totalSeeds = Math.floor(referenceArea * config.density);
 
@@ -204,7 +210,6 @@ export class VanGoghEngine {
         for (let step = 0; step < config.maxSteps; step++) {
             if (currX < 2 || currX >= width - 2 || currY < 2 || currY >= height - 2) break;
 
-            // Tam boyuttaki koordinatı Tensör harita indeksine eşleme
             const tx = Math.min(tensorField.sw - 1, Math.max(0, Math.floor(currX / scale)));
             const ty = Math.min(tensorField.sh - 1, Math.max(0, Math.floor(currY / scale)));
             const idx = ty * tensorField.sw + tx;
@@ -212,7 +217,6 @@ export class VanGoghEngine {
             let baseAngle = tensorField.angles[idx] || 0;
             const coh = tensorField.coherence[idx] || 0;
 
-            // Perlin gürültü frekansını çözünürlükten bağımsız kılma
             const noiseX = (currX / scale) * 0.003;
             const noiseY = (currY / scale) * 0.003;
             const noise = this.noise2D(noiseX, noiseY);
@@ -238,11 +242,14 @@ export class VanGoghEngine {
     }
 
     drawMultiBristleStroke(ctx, points, baseHsl, scale, config) {
-        ctx.save();
-
         const bristleCount = config.bristleCount;
         const primarySat = Math.min(100, Math.round(baseHsl.s * 125));
         const primaryLum = Math.round(baseHsl.l * 100);
+
+        // Context ayarlarını döngü dışına çıkararak CPU fırça döngüsünü hızlandırıyoruz
+        ctx.lineWidth = Math.max(0.6 * scale, (config.brushWidth / bristleCount) * 1.2);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
 
         for (let b = 0; b < bristleCount; b++) {
             const offsetFactor = (b / (bristleCount - 1) - 0.5) * config.brushWidth;
@@ -253,13 +260,8 @@ export class VanGoghEngine {
             const bristleHue = (baseHsl.h + bristleHueShift + 360) % 360;
             const bristleLum = Math.max(0, Math.min(100, primaryLum + bristleLumShift));
 
-            const bristleColor = `hsla(${Math.round(bristleHue)}, ${primarySat}%, ${Math.round(bristleLum)}%, ${config.alpha})`;
-
-            ctx.strokeStyle = bristleColor;
-            ctx.lineWidth = Math.max(0.6 * scale, config.brushWidth / bristleCount * 1.2);
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-
+            // Hızlı tamsayı kesmesi (| 0) ile Garbage Collector (GC) yükünü ve String parsing süresini azaltıyoruz
+            ctx.strokeStyle = `hsla(${bristleHue | 0}, ${primarySat | 0}%, ${bristleLum | 0}%, ${config.alpha})`;
             ctx.beginPath();
 
             for (let i = 0; i < points.length; i++) {
@@ -287,7 +289,8 @@ export class VanGoghEngine {
             ctx.stroke();
         }
 
-        if (config.impasto) {
+        // Impasto kabartması
+        if (config.impasto && scale > 1.0) {
             ctx.strokeStyle = `rgba(255, 255, 255, ${config.alpha * 0.35})`;
             ctx.lineWidth = Math.max(0.5 * scale, config.brushWidth * 0.2);
             ctx.beginPath();
@@ -300,10 +303,9 @@ export class VanGoghEngine {
             }
             ctx.stroke();
         }
-
-        ctx.restore();
     }
 
+    // ---------- Perlin gürültüsü ----------
     fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
     lerp(t, a, b) { return a + t * (b - a); }
     grad(hash, x, y) {

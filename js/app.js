@@ -1,11 +1,13 @@
 /**
- * @file app.js
- * @description Anomalies Retro & Glitch Medya Laboratuvarı Çift Çözünürlük Orkestratörü.
+ * @file app.js (Tam & Optimize)
+ * @description Anomalies Retro & Glitch Medya Laboratuvarı
+ * Çift çözünürlük, throttle edilmiş render, bellek dostu havuz.
  */
 
 import { ImageLoader } from './core/ImageLoader.js';
+import { canvasPool } from './core/CanvasPool.js';
 
-// Motorlar
+import { PostcardEngine } from './engines/PostcardEngine.js';
 import { PixelArtEngine } from './engines/PixelArtEngine.js';
 import { ThermalPaperEngine } from './engines/ThermalPaperEngine.js';
 import { AsciiMatrixEngine } from './engines/AsciiMatrixEngine.js';
@@ -45,7 +47,8 @@ class AnomaliesApp {
             textglitch: new TextGlitchEngine(),
             vangogh: new VanGoghEngine(),
             minecraft: new MinecraftEngine(),
-            sensorcorrupt: new SensorCorruptEngine()
+            sensorcorrupt: new SensorCorruptEngine(),
+            postcard: new PostcardEngine()
         };
 
         this.fullSourceCanvas = null;
@@ -66,9 +69,11 @@ class AnomaliesApp {
             textglitch: { text: 'SYSTEM ERROR', style: 'rgb_shift', fontSize: 42 },
             vangogh: { mode: 2, stepSize: 12, brushMinLength: 10, brushMaxLength: 30, impasto: true },
             minecraft: { mode: 1, blockSize: 24, paletteKey: 'classic' },
+            postcard: { mode: 'halftone_paper', stampMargin: 28, engraveDensity: 6 },
             sensorcorrupt: { mode: 'chaos', noiseIntensity: 55, chaosLevel: 80, lineJitter: true, bitShift: true, seed: 424242 }
         };
 
+        this.renderPending = false;
         this.initEventListeners();
     }
 
@@ -107,6 +112,10 @@ class AnomaliesApp {
         try {
             this.btnUpload.textContent = '⏳ Yükleniyor...';
             this.btnUpload.disabled = true;
+
+            canvasPool.releaseAll();
+            this.fullSourceCanvas = null;
+            this.previewSourceCanvas = null;
 
             const res = await ImageLoader.loadFromFile(file, 1200);
 
@@ -172,17 +181,23 @@ class AnomaliesApp {
                     p.blockSize,
                     p.paletteKey
                 );
+            case 'postcard':
+                return engineObj.render(
+                    targetSourceCanvas,
+                    p.mode,
+                    p.stampMargin,
+                    p.engraveDensity,
+                    scaleFactor
+                );
             case 'sensorcorrupt': {
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = targetSourceCanvas.width;
-                tempCanvas.height = targetSourceCanvas.height;
+                const tempCanvas = canvasPool.getCanvas('sensor_temp', targetSourceCanvas.width, targetSourceCanvas.height);
                 const tempCtx = tempCanvas.getContext('2d');
                 tempCtx.drawImage(targetSourceCanvas, 0, 0);
 
                 engineObj.process(
-                    tempCtx, 
-                    tempCanvas.width, 
-                    tempCanvas.height, 
+                    tempCtx,
+                    tempCanvas.width,
+                    tempCanvas.height,
                     {
                         mode: p.mode,
                         noiseIntensity: p.noiseIntensity / 100,
@@ -202,9 +217,18 @@ class AnomaliesApp {
 
     render() {
         if (!this.previewSourceCanvas) return;
+        if (!this.renderPending) {
+            this.renderPending = true;
+            requestAnimationFrame(() => {
+                this._doRender();
+                this.renderPending = false;
+            });
+        }
+    }
 
+    _doRender() {
+        if (!this.previewSourceCanvas) return;
         const resultCanvas = this._executeEngine(this.previewSourceCanvas, 1.0);
-
         if (resultCanvas) {
             this.mainCanvas.width = resultCanvas.width;
             this.mainCanvas.height = resultCanvas.height;
@@ -214,7 +238,6 @@ class AnomaliesApp {
 
     downloadHighResResult() {
         if (!this.fullSourceCanvas) return;
-
         const oldText = this.btnDownload.textContent;
         this.btnDownload.textContent = '⚙️ Yüksek Kalitede İşleniyor...';
         this.btnDownload.disabled = true;
@@ -222,7 +245,6 @@ class AnomaliesApp {
         setTimeout(() => {
             try {
                 const highResCanvas = this._executeEngine(this.fullSourceCanvas, this.scaleRatio);
-
                 highResCanvas.toBlob((blob) => {
                     if (!blob) {
                         alert('Görsel oluşturulamadı, bellek yetersiz olabilir.');
@@ -230,22 +252,17 @@ class AnomaliesApp {
                         this.btnDownload.disabled = false;
                         return;
                     }
-
                     const blobUrl = URL.createObjectURL(blob);
                     const link = document.createElement('a');
                     link.download = `anomalies_${this.activeEngine}_${highResCanvas.width}x${highResCanvas.height}_${Date.now()}.png`;
                     link.href = blobUrl;
-
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
-
                     setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
-
                     this.btnDownload.textContent = oldText;
                     this.btnDownload.disabled = false;
                 }, 'image/png', 1.0);
-
             } catch (err) {
                 alert('İndirme sırasında hata oluştu: ' + err.message);
                 this.btnDownload.textContent = oldText;
@@ -465,14 +482,12 @@ class AnomaliesApp {
                     <label>Gürültü Yoğunluğu: <b id="val-noiseIntensity">${p.noiseIntensity}%</b></label>
                     <input type="range" id="input-noiseIntensity" min="0" max="140" value="${p.noiseIntensity}">
                 </div>
-
                 <div id="wrapper-chaos" style="display: ${p.mode === 'chaos' ? 'block' : 'none'};">
                     <div class="param-group" style="margin-top: 12px;">
                         <label>Sinyal Yırtılma Şiddeti (Kaos): <b id="val-chaosLevel">${p.chaosLevel}%</b></label>
                         <input type="range" id="input-chaosLevel" min="10" max="100" value="${p.chaosLevel}">
                     </div>
                 </div>
-
                 <div id="wrapper-standard" style="display: ${p.mode === 'standard' ? 'block' : 'none'};">
                     <div class="param-group" style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
                         <input type="checkbox" id="input-lineJitter" ${p.lineJitter ? 'checked' : ''}>
@@ -483,11 +498,30 @@ class AnomaliesApp {
                         <label for="input-bitShift">Bit-Shift Taşması (Neon Patlama)</label>
                     </div>
                 </div>
-
                 <div class="param-group" style="margin-top: 16px;">
                     <button type="button" id="btn-reroll-seed" class="action-btn" style="width: 100%; padding: 8px; cursor: pointer;">
                         🎲 Farklı Yırtılma Varyasyonu Üret
                     </button>
+                </div>
+            `;
+        } else if (engine === 'postcard') {
+            html = `
+                <div class="param-group">
+                    <label>Kartpostal Doku Modu</label>
+                    <select id="input-mode">
+                        <option value="halftone_paper" ${p.mode === 'halftone_paper' ? 'selected' : ''}>Klasik Kartpostal (Renkleri Korur + Kağıt Dokusu)</option>
+                        <option value="engraving" ${p.mode === 'engraving' ? 'selected' : ''}>Gravür / Pasaport & Banknot (Para Tarzı Çizgisel)</option>
+                    </select>
+                </div>
+                <div class="param-group" style="margin-top: 12px;">
+                    <label>Pul Kenar Boşluğu: <b id="val-stampMargin">${p.stampMargin}px</b></label>
+                    <input type="range" id="input-stampMargin" min="12" max="60" value="${p.stampMargin}">
+                </div>
+                <div id="wrapper-engrave" style="margin-top: 12px; display: ${p.mode === 'engraving' ? 'block' : 'none'};">
+                    <div class="param-group">
+                        <label>Gravür Çizgi Detayı: <b id="val-engraveDensity">${p.engraveDensity}px</b></label>
+                        <input type="range" id="input-engraveDensity" min="3" max="12" value="${p.engraveDensity}">
+                    </div>
                 </div>
             `;
         }
@@ -515,10 +549,7 @@ class AnomaliesApp {
                 let value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
 
                 if (e.target.type === 'range') value = parseFloat(value);
-                
-                if (key === 'mode' && !isNaN(value)) {
-                    value = parseInt(value, 10);
-                }
+                if (key === 'mode' && !isNaN(value)) value = parseInt(value, 10);
 
                 if (key === 'charSetKey') {
                     const customWrapper = document.getElementById('custom-text-wrapper');
@@ -536,6 +567,13 @@ class AnomaliesApp {
                     }
                 }
 
+                if (key === 'mode' && engine === 'postcard') {
+                    const wrapEngrave = document.getElementById('wrapper-engrave');
+                    if (wrapEngrave) {
+                        wrapEngrave.style.display = value === 'engraving' ? 'block' : 'none';
+                    }
+                }
+
                 this.params[engine][key] = value;
 
                 const valLabel = document.getElementById(`val-${key}`);
@@ -544,7 +582,6 @@ class AnomaliesApp {
                     if (key === 'contrastBoost') suffix = 'x';
                     else if (['wear', 'tonerNoise', 'intensity', 'noiseIntensity', 'chaosLevel'].includes(key)) suffix = '%';
                     else if (typeof value === 'number') suffix = 'px';
-
                     valLabel.textContent = `${value}${suffix}`;
                 }
 
