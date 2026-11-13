@@ -4,64 +4,100 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Anomalies // Retro Media Lab</title>
-    
+
     <!-- PWA & Mobil Temalandırma -->
-    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#000000">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="./icon-192.png">
 
-    <link rel="stylesheet" href="css/main.css">
-    
-    <!-- Yükleme Kütüphaneleri ve Ana Uygulama Modülü -->
-    <script src="js/heic2any.min.js"></script>
-    <script type="module" src="js/app.js"></script>
+    <script type="module" src="/src/main.ts"></script>
 </head>
 <body>
 
     <header class="app-header">
-        <div class="logo">
-            <span class="badge">v2.08</span>
-            <h1>Koca Bir Saçmalık</h1>
+        <div>
+            <div class="logo">
+                <span class="badge">v3.0-ts</span>
+                <h1>Koca Bir Saçmalık</h1>
+            </div>
+            <p class="subtitle">Hitorie - One Me Two Heart</p>
         </div>
-        <p class="subtitle">Hitorie - One Me Two Heart</p>
+        <button
+            type="button"
+            id="gpuStatusBadge"
+            class="gpu-badge"
+            aria-pressed="true"
+            title="GPU / CPU işleme durumunu değiştir"
+        >GPU kontrol ediliyor...</button>
     </header>
 
     <main class="app-container">
         <!-- CANVAS GÖRÜNTÜLEME VE SÜRÜKLE-BIRAK ALANI -->
         <section class="viewport-section">
-            <div id="drop-zone" class="canvas-wrapper">
-                <canvas id="mainCanvas"></canvas>
+            <div
+                id="drop-zone"
+                class="canvas-wrapper"
+                role="button"
+                tabindex="0"
+                aria-label="Fotoğraf yüklemek için dokunun, Enter tuşuna basın veya sürükleyip bırakın"
+            >
+                <div class="canvas-stage" id="canvasStage">
+                    <canvas id="mainCanvas"></canvas>
+                    <canvas id="compareCanvas" class="compare-before-canvas" hidden aria-hidden="true"></canvas>
+                    <div id="compareDivider" class="compare-divider" hidden aria-hidden="true">
+                        <span class="compare-handle">⇄</span>
+                    </div>
+                </div>
                 <div id="placeholder" class="upload-placeholder">
-                    <div class="icon">📷</div>
+                    <div class="icon" aria-hidden="true">📷</div>
                     <p>Fotoğraf Yüklemek İçin Dokunun veya Sürükleyin</p>
                     <small>JPG, PNG, WEBP, HEIC desteklenir (Tüm işlemler yereldir)</small>
                 </div>
             </div>
             <input type="file" id="fileInput" accept="image/*,.heic,.heif" hidden>
+
+            <div class="viewport-tools" id="viewportTools" hidden>
+                <button
+                    type="button"
+                    id="btnCompareToggle"
+                    class="btn-chip"
+                    aria-pressed="false"
+                >🌗 Önce / Sonra</button>
+                <input
+                    type="range"
+                    id="compareRange"
+                    class="compare-range"
+                    min="0"
+                    max="100"
+                    value="50"
+                    hidden
+                    aria-label="Önce ve sonra karşılaştırma konumu"
+                >
+                <span id="comparePercentLabel" class="compare-pct" hidden>%50</span>
+            </div>
         </section>
 
         <!-- KONTROL VE PARAMETRE PANELERİ -->
         <section class="controls-section">
             <!-- MOTOR SEÇİM BARI -->
             <div class="engine-selector-wrapper">
-                <label class="section-label">EFEKT MOTORU</label>
-                <div class="engine-scroll-bar" id="engineBar">
-                    <button class="engine-btn active" data-engine="pixelart">👾 Pixel Art</button>
-                    <button class="engine-btn" data-engine="glitch">🌀 Spider Glitch</button>
-                    <button class="engine-btn" data-engine="sensorcorrupt">🔌 Sensor Corrupt</button>
-                    <button class="engine-btn" data-engine="textglitch">🔤 Glitch Tipografi</button>
-                    <button class="engine-btn" data-engine="crttv">📺 CRT TV</button>
-                    <button class="engine-btn" data-engine="ascii">💻 ASCII Matrix</button>
-                    <button class="engine-btn" data-engine="thermalpaper">🧾 Market Fişi</button>
-                    <button class="engine-btn" data-engine="flir">🌡️ Termal Görüş</button>
-                    <button class="engine-btn" data-engine="cmyk">🖨️ CMYK Matbaa</button>
-                    <button class="engine-btn" data-engine="fanzine">📄 Kötü Fotokopi</button>
-                    <button class="engine-btn" data-engine="colorclash">📼 Color Clash</button>
-                    <button class="engine-btn" data-engine="vangogh">🎨 Van Gogh</button>
-                    <button class="engine-btn" data-engine="minecraft">🎮 Minecraft</button>
-                    <button class="engine-btn" data-engine="postcard">📮 Kartpostal / Pul</button>
+                <label class="section-label" id="engineSectionLabel">EFEKT MOTORU</label>
+                <div class="engine-scroll-bar" id="engineBar" role="group" aria-labelledby="engineSectionLabel">
+                    <button type="button" class="engine-btn active" data-engine="pixelart">👾 Pixel Art</button>
+                    <button type="button" class="engine-btn" data-engine="glitch">🌀 Spider Glitch</button>
+                    <button type="button" class="engine-btn" data-engine="sensorcorrupt">🔌 Sensor Corrupt</button>
+                    <button type="button" class="engine-btn" data-engine="textglitch">🔤 Glitch Tipografi</button>
+                    <button type="button" class="engine-btn" data-engine="crttv">📺 CRT TV</button>
+                    <button type="button" class="engine-btn" data-engine="ascii">💻 ASCII Matrix</button>
+                    <button type="button" class="engine-btn" data-engine="thermalpaper">🧾 Market Fişi</button>
+                    <button type="button" class="engine-btn" data-engine="flir">🌡️ Termal Görüş</button>
+                    <button type="button" class="engine-btn" data-engine="cmyk">🖨️ CMYK Matbaa</button>
+                    <button type="button" class="engine-btn" data-engine="fanzine">📄 Kötü Fotokopi</button>
+                    <button type="button" class="engine-btn" data-engine="colorclash">📼 Color Clash</button>
+                    <button type="button" class="engine-btn" data-engine="vangogh">🎨 Van Gogh</button>
+                    <button type="button" class="engine-btn" data-engine="minecraft">🎮 Minecraft</button>
+                    <button type="button" class="engine-btn" data-engine="postcard">📮 Kartpostal / Pul</button>
                 </div>
             </div>
 
@@ -70,23 +106,41 @@
                 <p class="empty-state">İşlem yapmak için bir fotoğraf yükleyin.</p>
             </div>
 
+            <!-- ESNEK DIŞA AKTARMA AYARLARI -->
+            <div class="export-card" id="exportOptionsCard" hidden>
+                <label class="section-label">DIŞA AKTARMA SEÇENEKLERİ</label>
+                <div class="export-grid">
+                    <div class="export-field">
+                        <label for="exportFormat">Format</label>
+                        <select id="exportFormat">
+                            <option value="image/png">PNG (Kayıpsız)</option>
+                            <option value="image/webp">WEBP</option>
+                            <option value="image/jpeg">JPEG</option>
+                        </select>
+                    </div>
+                    <div class="export-field">
+                        <label for="exportMaxDim">Boyut</label>
+                        <select id="exportMaxDim">
+                            <option value="0">Orijinal</option>
+                            <option value="2048">2048 px</option>
+                            <option value="1200">1200 px</option>
+                        </select>
+                    </div>
+                    <div class="export-field export-quality-field" id="exportQualityWrap">
+                        <label for="exportQuality">Kalite: <span id="exportQualityVal">%92</span></label>
+                        <input type="range" id="exportQuality" min="50" max="100" value="92" disabled>
+                    </div>
+                </div>
+            </div>
+
             <!-- EYLEM BUTONLARI -->
             <div class="action-bar">
-                <button id="btnUpload" class="btn btn-secondary">📁 Fotoğraf Seç</button>
-                <button id="btnDownload" class="btn btn-primary" disabled>💾 PNG İndir</button>
+                <button type="button" id="btnUpload" class="btn btn-secondary">📁 Fotoğraf Seç</button>
+                <button type="button" id="btnDownload" class="btn btn-primary" disabled>💾 Dışa Aktar</button>
+                <button type="button" id="btnShare" class="btn btn-secondary" hidden disabled>📤 Paylaş</button>
             </div>
         </section>
     </main>
 
-    <!-- SERVICE WORKER (ÇEVRİMDIŞI PWA DESTEĞİ) -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then((reg) => console.log('Service Worker kayıt başarılı:', reg.scope))
-                    .catch((err) => console.error('Service Worker kaydı başarısız:', err));
-            });
-        }
-    </script>
 </body>
 </html>

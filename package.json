@@ -1,0 +1,38 @@
+{
+  "name": "retro-anomalies-pwa",
+  "version": "1.0.0",
+  "description": "Görsel dönüştürme, piksel sanatı ve metin efektleri oluşturmak için geliştirilmiş tarayıcı tabanlı minimalist bir araç.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src tests",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VelliDR/retro-anomalies-pwa.git"
+  },
+  "keywords": [],
+  "bugs": {
+    "url": "https://github.com/VelliDR/retro-anomalies-pwa/issues"
+  },
+  "homepage": "https://github.com/VelliDR/retro-anomalies-pwa#readme",
+  "dependencies": {
+    "heic2any": "^0.0.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^26.6.6",
+    "eslint": "^10.14.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.2",
+    "vite": "^8.3.8",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.1.0"
+  }
+}
