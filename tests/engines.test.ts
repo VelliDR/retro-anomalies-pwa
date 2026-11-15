@@ -7,6 +7,7 @@ import {
 } from '../src/engines/ColorClashEngine.ts';
 import { processPixelArtGrid } from '../src/engines/PixelArtEngine.ts';
 import { computePostcardEngravingSegments } from '../src/engines/PostcardEngine.ts';
+import { processSensorCorruptPixels } from '../src/engines/SensorCorruptEngine.ts';
 import { processThermalDots } from '../src/engines/ThermalPaperEngine.ts';
 
 describe('ImageResampler', () => {
@@ -138,5 +139,75 @@ describe('Worker-Ready Engine Kernels', () => {
     const segs = computePostcardEngravingSegments(pixels, w, h, 8, 1.0);
     expect(segs.length).toBeGreaterThan(0);
     expect(segs.length % 5).toBe(0);
+  });
+
+  it('preserves portrait aspect ratio in processPixelArtGrid on narrow tall inputs', () => {
+    const w = 120;
+    const h = 360;
+    const pixels = new Uint8ClampedArray(w * h * 4);
+    pixels.fill(255);
+
+    const res = processPixelArtGrid(
+      pixels,
+      w,
+      h,
+      { paletteKey: 'c64', pixelSize: 128, ditherMode: 'none' },
+      1.0
+    );
+    expect(res.smallH).toBe(128);
+    expect(res.smallW).toBe(Math.floor(120 * (128 / 360)));
+  });
+
+  it('covers non-divisible edge rows and cols in processThermalDots', () => {
+    const w = 37;
+    const h = 37;
+    const pixels = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      pixels[i * 4] = 20;
+      pixels[i * 4 + 1] = 20;
+      pixels[i * 4 + 2] = 20;
+      pixels[i * 4 + 3] = 255;
+    }
+
+    const res = processThermalDots(
+      pixels,
+      w,
+      h,
+      { paperType: 'fresh', ditherMode: 'bayer', wear: 0, tornEdge: false },
+      1.0
+    );
+    expect(res.dSize).toBe(3);
+    expect(res.matrixCols).toBe(13);
+    expect(res.matrixRows).toBe(13);
+  });
+
+  it('keeps standard RGB noise amplitude invariant across scaleFactor', () => {
+    const w = 16;
+    const h = 16;
+    const makeFlat = () => {
+      const arr = new Uint8ClampedArray(w * h * 4);
+      for (let i = 0; i < w * h; i++) {
+        arr[i * 4] = 128;
+        arr[i * 4 + 1] = 128;
+        arr[i * 4 + 2] = 128;
+        arr[i * 4 + 3] = 255;
+      }
+      return arr;
+    };
+
+    const a = makeFlat();
+    const b = makeFlat();
+    const params = {
+      mode: 'standard' as const,
+      noiseIntensity: 100,
+      chaosLevel: 0,
+      lineJitter: false,
+      bitShift: false,
+      seed: 12345,
+    };
+
+    processSensorCorruptPixels(a, w, h, params, 0.25);
+    processSensorCorruptPixels(b, w, h, params, 1.0);
+    expect(a).toEqual(b);
   });
 });

@@ -60,6 +60,7 @@ export class WebGL2Pipeline {
   private gl: WebGL2RenderingContext | null = null;
   private capabilities: WebGL2Capabilities | null = null;
   private contextLost = false;
+  private contextEpoch = 0;
   private programCache = new Map<string, WebGLProgram>();
   private dummyVao: WebGLVertexArrayObject | null = null;
 
@@ -79,6 +80,7 @@ export class WebGL2Pipeline {
       el.addEventListener('webglcontextlost', (e) => {
         e.preventDefault();
         this.contextLost = true;
+        this.contextEpoch++;
         this.invalidateCaches();
       });
       el.addEventListener('webglcontextrestored', () => {
@@ -95,6 +97,10 @@ export class WebGL2Pipeline {
     }
 
     return this.initContext();
+  }
+
+  getContextEpoch(): number {
+    return this.contextEpoch;
   }
 
   private initContext(): WebGL2Capabilities {
@@ -129,6 +135,7 @@ export class WebGL2Pipeline {
       }
 
       this.gl = gl;
+      this.contextEpoch++;
       this.dummyVao = gl.createVertexArray();
 
       // Sabit pixel store bayrakları: Y eksenini shader'da kontrollü çeviriyoruz.
@@ -241,6 +248,7 @@ export class WebGL2Pipeline {
     if (!tex) return null;
 
     const filter = linear ? gl.LINEAR : gl.NEAREST;
+    gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -249,6 +257,7 @@ export class WebGL2Pipeline {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    gl.bindTexture(gl.TEXTURE_2D, null);
     return tex;
   }
 
@@ -260,7 +269,11 @@ export class WebGL2Pipeline {
 
     const tex = gl.createTexture();
     const fbo = gl.createFramebuffer();
-    if (!tex || !fbo) return null;
+    if (!tex || !fbo) {
+      if (tex) gl.deleteTexture(tex);
+      if (fbo) gl.deleteFramebuffer(fbo);
+      return null;
+    }
 
     const linear = !useFloat || caps.floatLinearSupported;
     const filter = linear ? gl.LINEAR : gl.NEAREST;

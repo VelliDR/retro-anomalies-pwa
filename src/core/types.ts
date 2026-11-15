@@ -165,7 +165,12 @@ export interface SelectOption {
   label: string;
 }
 
-export type ParamFieldSchema<K extends string = string> =
+export interface VisibleWhenRule {
+  key: string;
+  equals: string;
+}
+
+export type ParamFieldSchema<K extends string = string> = (
   | {
       type: 'range';
       key: K;
@@ -193,13 +198,15 @@ export type ParamFieldSchema<K extends string = string> =
       key: K;
       label: string;
       placeholder?: string;
-      visibleWhen?: { key: string; equals: string };
     }
   | {
       type: 'action';
       id: string;
       label: string;
-    };
+    }
+) & {
+  visibleWhen?: VisibleWhenRule;
+};
 
 export interface EngineMetadata<K extends EngineId = EngineId> {
   id: K;

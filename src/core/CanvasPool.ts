@@ -1,14 +1,36 @@
+export interface CanvasPoolOptions {
+  willReadFrequently?: boolean;
+}
+
 /**
  * Bellek sızıntılarını ve gereksiz GPU/DOM tahsislerini önleyen sabit tuval havuzu.
  */
 export class CanvasPool {
   private readonly pool = new Map<string, HTMLCanvasElement>();
+  private readonly readbackFlags = new Map<string, boolean>();
 
-  getCanvas(id: string, width: number, height: number): HTMLCanvasElement {
+  getCanvas(
+    id: string,
+    width: number,
+    height: number,
+    options?: CanvasPoolOptions
+  ): HTMLCanvasElement {
+    const wantReadback = Boolean(options?.willReadFrequently);
     let canvas = this.pool.get(id);
-    if (!canvas) {
+    const prevReadback = this.readbackFlags.get(id) ?? false;
+
+    if (!canvas || (options?.willReadFrequently !== undefined && prevReadback !== wantReadback)) {
+      if (canvas) {
+        canvas.width = 0;
+        canvas.height = 0;
+      }
       canvas = document.createElement('canvas');
       this.pool.set(id, canvas);
+      this.readbackFlags.set(id, wantReadback);
+      if (wantReadback) {
+        // İlk context çağrısında readback bayrağını kilitle
+        canvas.getContext('2d', { willReadFrequently: true });
+      }
     }
 
     const safeW = Math.max(1, width | 0);
@@ -18,8 +40,14 @@ export class CanvasPool {
       canvas.width = safeW;
       canvas.height = safeH;
     } else {
-      const ctx = canvas.getContext('2d');
-      ctx?.clearRect(0, 0, safeW, safeH);
+      const ctx = canvas.getContext('2d', wantReadback ? { willReadFrequently: true } : undefined);
+      if (ctx) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+        ctx.imageSmoothingEnabled = true;
+        ctx.clearRect(0, 0, safeW, safeH);
+      }
     }
 
     return canvas;
@@ -42,6 +70,7 @@ export class CanvasPool {
     canvas.width = 0;
     canvas.height = 0;
     this.pool.delete(id);
+    this.readbackFlags.delete(id);
   }
 
   releaseExcept(keepIds: readonly string[]): void {
@@ -51,6 +80,7 @@ export class CanvasPool {
       canvas.width = 0;
       canvas.height = 0;
       this.pool.delete(id);
+      this.readbackFlags.delete(id);
     }
   }
 
@@ -60,6 +90,7 @@ export class CanvasPool {
       canvas.height = 0;
     });
     this.pool.clear();
+    this.readbackFlags.clear();
   }
 }
 

@@ -156,7 +156,9 @@ export class FlirThermalEngine implements IImageEngine<FlirThermalParams> {
     const h = sourceCanvas.height;
     const scale = context.referenceScale;
     const lut = this.getLut(params.mode);
-    const outputCanvas = canvasPool.getCanvas('flir_output', w, h);
+    const outputCanvas = canvasPool.getCanvas('flir_output', w, h, {
+      willReadFrequently: !context.preferGpu,
+    });
 
     if (context.preferGpu && webgl2Pipeline.canProcess(w, h)) {
       const ok = this.renderWebGL2(sourceCanvas, outputCanvas, w, h, scale, lut);
@@ -296,14 +298,18 @@ export class FlirThermalEngine implements IImageEngine<FlirThermalParams> {
     bloomCtx.imageSmoothingEnabled = true;
     bloomCtx.drawImage(outputCanvas, 0, 0, bw, bh);
 
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = 0.2;
-    ctx.drawImage(bloomCanvas, 0, 0, w, h);
-    ctx.restore();
+    // Kaynak şeffaflığını (alpha) korumak için composite'i geçici katmanda yapıp source-atop uygula
+    const workCanvas = canvasPool.getCanvas('flir_work_cpu', w, h);
+    const workCtx = canvasPool.getContext2D(workCanvas);
+    workCtx.drawImage(outputCanvas, 0, 0);
+    workCtx.save();
+    workCtx.globalCompositeOperation = 'screen';
+    workCtx.globalAlpha = 0.2;
+    workCtx.drawImage(bloomCanvas, 0, 0, w, h);
+    workCtx.restore();
 
-    ctx.save();
-    const radGrad = ctx.createRadialGradient(
+    workCtx.save();
+    const radGrad = workCtx.createRadialGradient(
       w / 2,
       h / 2,
       Math.min(w, h) * 0.42,
@@ -313,8 +319,13 @@ export class FlirThermalEngine implements IImageEngine<FlirThermalParams> {
     );
     radGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
     radGrad.addColorStop(1, 'rgba(0, 0, 0, 0.65)');
-    ctx.fillStyle = radGrad;
-    ctx.fillRect(0, 0, w, h);
+    workCtx.fillStyle = radGrad;
+    workCtx.fillRect(0, 0, w, h);
+    workCtx.restore();
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.drawImage(workCanvas, 0, 0);
     ctx.restore();
 
     return outputCanvas;

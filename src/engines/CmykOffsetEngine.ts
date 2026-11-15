@@ -19,25 +19,27 @@ vec2 rotate2d(vec2 p, float angleRad) {
 }
 
 float halftoneChannel(vec2 pxCoord, vec2 shiftPx, float angleRad, int channelIdx) {
-  vec2 shifted = pxCoord - shiftPx;
+  vec2 origin = uResolution * 0.5;
+  vec2 shifted = pxCoord - origin - shiftPx;
   vec2 rot = rotate2d(shifted, -angleRad);
   vec2 cellIdx = floor(rot / uDotSize);
   vec2 cellCenterRot = (cellIdx + 0.5) * uDotSize;
-  vec2 cellCenterPx = rotate2d(cellCenterRot, angleRad) + shiftPx;
+  vec2 cellCenterPx = rotate2d(cellCenterRot, angleRad) + origin + shiftPx;
 
-  // Hücre merkezinde 5-nokta alan yumuşatmalı örnekleme
+  // Hücre merkezinde 5-nokta alfa-ağırlıklı alan yumuşatmalı örnekleme
   vec2 uvC = clamp(cellCenterPx / uResolution, 0.0, 1.0);
   vec2 stepUv = (uDotSize * 0.28) / uResolution;
   vec4 c0 = texture(uSource, uvC);
-  vec3 avg = (
-    c0.rgb +
-    texture(uSource, clamp(uvC + vec2(stepUv.x, 0.0), 0.0, 1.0)).rgb +
-    texture(uSource, clamp(uvC - vec2(stepUv.x, 0.0), 0.0, 1.0)).rgb +
-    texture(uSource, clamp(uvC + vec2(0.0, stepUv.y), 0.0, 1.0)).rgb +
-    texture(uSource, clamp(uvC - vec2(0.0, stepUv.y), 0.0, 1.0)).rgb
-  ) * 0.2;
-
   if (c0.a < 0.1) return 0.0;
+
+  vec4 s1 = texture(uSource, clamp(uvC + vec2(stepUv.x, 0.0), 0.0, 1.0));
+  vec4 s2 = texture(uSource, clamp(uvC - vec2(stepUv.x, 0.0), 0.0, 1.0));
+  vec4 s3 = texture(uSource, clamp(uvC + vec2(0.0, stepUv.y), 0.0, 1.0));
+  vec4 s4 = texture(uSource, clamp(uvC - vec2(0.0, stepUv.y), 0.0, 1.0));
+  float aSum = c0.a + s1.a + s2.a + s3.a + s4.a;
+  vec3 avg = aSum > 0.001
+    ? (c0.rgb * c0.a + s1.rgb * s1.a + s2.rgb * s2.a + s3.rgb * s3.a + s4.rgb * s4.a) / aSum
+    : c0.rgb;
 
   float k = 1.0 - max(avg.r, max(avg.g, avg.b));
   float ink = k;
@@ -108,7 +110,7 @@ export class CmykOffsetEngine implements IImageEngine<CmykOffsetParams> {
     const gl = webgl2Pipeline.getContext();
     if (!gl) return false;
 
-    const prog = webgl2Pipeline.compileQuadProgram('cmyk_rosette_v1', CMYK_ROSETTE_FS);
+    const prog = webgl2Pipeline.compileQuadProgram('cmyk_rosette_v2', CMYK_ROSETTE_FS);
     if (!prog) return false;
 
     const srcTex = webgl2Pipeline.uploadCanvasTexture(sourceCanvas, true);

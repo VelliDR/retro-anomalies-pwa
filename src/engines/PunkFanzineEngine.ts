@@ -87,7 +87,9 @@ export class PunkFanzineEngine implements IImageEngine<PunkFanzineParams> {
     const w = sourceCanvas.width;
     const h = sourceCanvas.height;
     const scale = context.referenceScale;
-    const outputCanvas = canvasPool.getCanvas('fanzine_output', w, h);
+    const outputCanvas = canvasPool.getCanvas('fanzine_output', w, h, {
+      willReadFrequently: !context.preferGpu,
+    });
 
     if (context.preferGpu && webgl2Pipeline.canProcess(w, h)) {
       const ok = this.renderWebGL2(sourceCanvas, outputCanvas, w, h, params, scale);
@@ -124,7 +126,7 @@ export class PunkFanzineEngine implements IImageEngine<PunkFanzineParams> {
       gl.uniform1f(gl.getUniformLocation(program, 'uTonerNoise'), params.tonerNoise / 100);
       gl.uniform1f(gl.getUniformLocation(program, 'uScale'), scale);
 
-      webgl2Pipeline.drawQuad(program, w, h, false, null);
+      webgl2Pipeline.drawQuad(program, w, h, true, null);
       return webgl2Pipeline.copyToCanvas(outputCanvas);
     } finally {
       gl.deleteTexture(srcTex);
@@ -173,6 +175,9 @@ export class PunkFanzineEngine implements IImageEngine<PunkFanzineParams> {
 
     ctx.putImageData(imgData, 0, 0);
 
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-atop';
+
     if (normNoise > 0.15) {
       const streakCount = Math.floor((2 + normNoise * 6) * scale);
       ctx.fillStyle = 'rgba(20, 20, 20, 0.12)';
@@ -183,7 +188,6 @@ export class PunkFanzineEngine implements IImageEngine<PunkFanzineParams> {
       }
     }
 
-    ctx.save();
     const radGrad = ctx.createRadialGradient(
       w / 2,
       h / 2,

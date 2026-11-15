@@ -116,6 +116,7 @@ export const ENGINE_METADATA: readonly EngineMetadata[] = [
     id: 'glitch',
     label: 'Spider Glitch',
     icon: '🌀',
+    usesGpu: true,
     fields: [
       {
         type: 'range',
@@ -144,6 +145,27 @@ export const ENGINE_METADATA: readonly EngineMetadata[] = [
         ],
       },
       { type: 'range', key: 'noiseIntensity', label: 'Şiddet', min: 0, max: 140, unit: '%' },
+      {
+        type: 'range',
+        key: 'chaosLevel',
+        label: 'Kaos / Blok Kayması',
+        min: 0,
+        max: 100,
+        unit: '%',
+        visibleWhen: { key: 'mode', equals: 'chaos' },
+      },
+      {
+        type: 'checkbox',
+        key: 'lineJitter',
+        label: 'Satır Kayması (Line Jitter)',
+        visibleWhen: { key: 'mode', equals: 'standard' },
+      },
+      {
+        type: 'checkbox',
+        key: 'bitShift',
+        label: 'Bit Kaydırma (Bit Shift)',
+        visibleWhen: { key: 'mode', equals: 'standard' },
+      },
       { type: 'action', id: 'reroll-seed', label: '🎲 Farklı Varyasyon Üret' },
     ],
   },
@@ -180,6 +202,7 @@ export const ENGINE_METADATA: readonly EngineMetadata[] = [
     id: 'ascii',
     label: 'ASCII Matrix',
     icon: '💻',
+    usesGpu: true,
     fields: [
       {
         type: 'select',
@@ -271,6 +294,7 @@ export const ENGINE_METADATA: readonly EngineMetadata[] = [
     id: 'fanzine',
     label: 'Kötü Fotokopi',
     icon: '📄',
+    usesGpu: true,
     fields: [
       { type: 'range', key: 'contrastBoost', label: 'Kontrast Sertliği', min: 1.0, max: 4.0, step: 0.1, unit: 'x' },
       { type: 'range', key: 'tonerNoise', label: 'Toner Kiri', min: 0, max: 100, unit: '%' },
@@ -322,6 +346,15 @@ export const ENGINE_METADATA: readonly EngineMetadata[] = [
           { value: '2', label: '2.5D Isometric' },
         ],
       },
+      {
+        type: 'select',
+        key: 'paletteKey',
+        label: 'Renk Paleti',
+        options: [
+          { value: 'classic', label: 'Klasik Minecraft' },
+          { value: 'colorful', label: 'Renkli Blok Tonlama' },
+        ],
+      },
       { type: 'range', key: 'blockSize', label: 'Blok Boyutu', min: 8, max: 48, step: 2, unit: 'px' },
     ],
   },
@@ -340,6 +373,15 @@ export const ENGINE_METADATA: readonly EngineMetadata[] = [
         ],
       },
       { type: 'range', key: 'stampMargin', label: 'Pul Kenarı', min: 12, max: 60, unit: 'px' },
+      {
+        type: 'range',
+        key: 'engraveDensity',
+        label: 'Çizgi Aralığı',
+        min: 3,
+        max: 14,
+        unit: 'px',
+        visibleWhen: { key: 'mode', equals: 'engraving' },
+      },
     ],
   },
 ];

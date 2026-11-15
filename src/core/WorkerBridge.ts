@@ -112,7 +112,13 @@ export class WorkerBridge {
 
       this.pending.set(request.id, { resolve, reject, cleanup });
       signal?.addEventListener('abort', onAbort, { once: true });
-      worker.postMessage(request, transferables);
+      try {
+        worker.postMessage(request, transferables);
+      } catch (err) {
+        this.pending.delete(request.id);
+        cleanup();
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
     });
   }
 
@@ -134,6 +140,7 @@ export class WorkerBridge {
         if (extracted !== null) return extracted;
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') throw err;
+        console.warn('Worker görevi başarısız oldu, CPU yedek yoluna dönülüyor:', err);
       }
     }
 

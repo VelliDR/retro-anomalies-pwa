@@ -5,6 +5,10 @@ export class ExportEngine {
     durationMs = 3000,
     fps = 30
   ): Promise<string> {
+    if (typeof MediaRecorder === 'undefined' || typeof canvas.captureStream !== 'function') {
+      throw new Error('Tarayıcınız WebM video kaydını desteklemiyor.');
+    }
+
     const stream = canvas.captureStream(fps);
     const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
       ? 'video/webm;codecs=vp9'
@@ -18,23 +22,39 @@ export class ExportEngine {
     };
 
     return new Promise<string>((resolve, reject) => {
+      let intervalId = 0;
+      let timeoutId = 0;
+      const cleanup = () => {
+        if (intervalId) window.clearInterval(intervalId);
+        if (timeoutId) window.clearTimeout(timeoutId);
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
       recorder.onstop = () => {
+        cleanup();
         const blob = new Blob(chunks, { type: 'video/webm' });
         resolve(URL.createObjectURL(blob));
       };
-      recorder.onerror = (err) => reject(err);
+      recorder.onerror = (err) => {
+        cleanup();
+        reject(err);
+      };
 
       const startTime = performance.now();
       recorder.start();
+      renderFrameFn(0);
 
-      const interval = window.setInterval(() => {
+      intervalId = window.setInterval(() => {
         const elapsedSeconds = (performance.now() - startTime) / 1000;
         renderFrameFn(elapsedSeconds);
       }, 1000 / fps);
 
-      window.setTimeout(() => {
-        window.clearInterval(interval);
-        recorder.stop();
+      timeoutId = window.setTimeout(() => {
+        window.clearInterval(intervalId);
+        intervalId = 0;
+        if (recorder.state !== 'inactive') {
+          recorder.stop();
+        }
       }, durationMs);
     });
   }

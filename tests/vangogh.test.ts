@@ -146,4 +146,40 @@ describe('VanGogh StructureTensor & RK2 Pipeline', () => {
     }
     expect(actualFloats).toBe(expectedFloats);
   });
+
+  it('prevents stroke explosion on small images and responds to stepSize density', () => {
+    const w = 160;
+    const h = 120;
+    const pixels = makeSyntheticImage(w, h, (x, y) => [
+      Math.round((x / w) * 255),
+      Math.round((y / h) * 255),
+      100,
+    ]);
+
+    const smallStrokes = generateVanGoghStrokes(
+      pixels,
+      w,
+      h,
+      { mode: 2, stepSize: 12, brushMinLength: 10, brushMaxLength: 30, impasto: true },
+      w / 1200
+    );
+    expect(smallStrokes.length).toBeGreaterThan(50);
+    expect(smallStrokes.length).toBeLessThan(5000);
+
+    const fineStrokes = generateVanGoghStrokes(
+      pixels,
+      128,
+      128,
+      { mode: 1, stepSize: 6, brushMinLength: 8, brushMaxLength: 24, impasto: false },
+      1.0
+    );
+    const coarseStrokes = generateVanGoghStrokes(
+      pixels,
+      128,
+      128,
+      { mode: 1, stepSize: 24, brushMinLength: 8, brushMaxLength: 24, impasto: false },
+      1.0
+    );
+    expect(fineStrokes.length).toBeGreaterThan(coarseStrokes.length);
+  });
 });

@@ -15,26 +15,39 @@ export function renderParamControls(
 ): void {
   container.replaceChildren();
   const meta = ENGINE_METADATA_MAP[engineId];
-  const conditionalWrappers = new Map<string, { el: HTMLElement; key: string; equals: string }>();
+  const conditionalWrappers: Array<{
+    el: HTMLElement;
+    key: string;
+    equals: string;
+    visibleDisplay: string;
+  }> = [];
 
   meta.fields.forEach((field, index) => {
-    const group = createFieldElement(field, params, index > 0, (key, value) => {
-      params[key] = value;
-      conditionalWrappers.forEach((entry) => {
-        if (entry.key === key) {
-          entry.el.style.display = String(value) === entry.equals ? 'block' : 'none';
+    const group = createFieldElement(
+      field,
+      params,
+      index > 0,
+      (key, value) => {
+        params[key] = value;
+        for (const entry of conditionalWrappers) {
+          if (entry.key === key) {
+            entry.el.style.display = String(value) === entry.equals ? entry.visibleDisplay : 'none';
+          }
         }
-      });
-      callbacks.onParamChange();
-    }, callbacks.onAction);
+        callbacks.onParamChange();
+      },
+      callbacks.onAction
+    );
 
-    if (field.type === 'text' && field.visibleWhen) {
+    if ('visibleWhen' in field && field.visibleWhen) {
+      const visibleDisplay = field.type === 'checkbox' ? 'flex' : 'block';
       const currentVal = String(params[field.visibleWhen.key] ?? '');
-      group.style.display = currentVal === field.visibleWhen.equals ? 'block' : 'none';
-      conditionalWrappers.set(field.key, {
+      group.style.display = currentVal === field.visibleWhen.equals ? visibleDisplay : 'none';
+      conditionalWrappers.push({
         el: group,
         key: field.visibleWhen.key,
         equals: field.visibleWhen.equals,
+        visibleDisplay,
       });
     }
 
@@ -90,7 +103,9 @@ function createFieldElement(
 
   if (field.type === 'range') {
     const currentValue = Number(params[field.key] ?? field.min);
+    const inputId = `input-${field.key}`;
     const label = document.createElement('label');
+    label.htmlFor = inputId;
     label.append(document.createTextNode(`${field.label}: `));
     const valueTag = document.createElement('b');
     valueTag.id = `val-${field.key}`;
@@ -99,7 +114,7 @@ function createFieldElement(
 
     const input = document.createElement('input');
     input.type = 'range';
-    input.id = `input-${field.key}`;
+    input.id = inputId;
     input.min = String(field.min);
     input.max = String(field.max);
     if (field.step !== undefined) input.step = String(field.step);
@@ -124,11 +139,13 @@ function createFieldElement(
   }
 
   if (field.type === 'select') {
+    const selectId = `input-${field.key}`;
     const label = document.createElement('label');
+    label.htmlFor = selectId;
     label.textContent = field.label;
 
     const select = document.createElement('select');
-    select.id = `input-${field.key}`;
+    select.id = selectId;
     const currentStr = String(params[field.key] ?? '');
 
     for (const opt of field.options) {
@@ -140,7 +157,7 @@ function createFieldElement(
     }
 
     select.addEventListener('change', () => {
-      const val = field.isNumeric ? parseInt(select.value, 10) : select.value;
+      const val = field.isNumeric ? Number(select.value) : select.value;
       onUpdate(field.key, val);
     });
 
@@ -149,11 +166,13 @@ function createFieldElement(
   }
 
   // field.type === 'text'
+  const textInputId = `input-${field.key}`;
   const label = document.createElement('label');
+  label.htmlFor = textInputId;
   label.textContent = field.label;
   const input = document.createElement('input');
   input.type = 'text';
-  input.id = `input-${field.key}`;
+  input.id = textInputId;
   input.value = String(params[field.key] ?? '');
   if (field.placeholder) input.placeholder = field.placeholder;
 
@@ -210,6 +229,9 @@ function createTextOverlaySection(
 
   const textGroup = document.createElement('div');
   textGroup.className = 'param-group';
+  const textLabel = document.createElement('label');
+  textLabel.htmlFor = 'input-textOverlay-text';
+  textLabel.textContent = 'Efekt Metni';
   const textInput = document.createElement('input');
   textInput.type = 'text';
   textInput.id = 'input-textOverlay-text';
@@ -219,12 +241,39 @@ function createTextOverlaySection(
     textOverlay.text = textInput.value;
     onParamChange();
   });
-  textGroup.appendChild(textInput);
+  textGroup.append(textLabel, textInput);
+
+  const scaleGroup = document.createElement('div');
+  scaleGroup.className = 'param-group';
+  scaleGroup.style.marginTop = '8px';
+  const scaleLabel = document.createElement('label');
+  scaleLabel.htmlFor = 'input-textOverlay-scale';
+  scaleLabel.append(document.createTextNode('Metin Ölçeği: '));
+  const scaleValueTag = document.createElement('b');
+  scaleValueTag.id = 'val-textOverlay-scale';
+  scaleValueTag.textContent = `${textOverlay.scale.toFixed(1)}x`;
+  scaleLabel.appendChild(scaleValueTag);
+
+  const scaleInput = document.createElement('input');
+  scaleInput.type = 'range';
+  scaleInput.id = 'input-textOverlay-scale';
+  scaleInput.min = '0.5';
+  scaleInput.max = '2.0';
+  scaleInput.step = '0.1';
+  scaleInput.value = String(textOverlay.scale);
+  scaleInput.addEventListener('input', () => {
+    const val = parseFloat(scaleInput.value);
+    textOverlay.scale = val;
+    scaleValueTag.textContent = `${val.toFixed(1)}x`;
+    onParamChange();
+  });
+  scaleGroup.append(scaleLabel, scaleInput);
 
   const colorGroup = document.createElement('div');
   colorGroup.className = 'param-group';
   colorGroup.style.marginTop = '8px';
   const colorLabel = document.createElement('label');
+  colorLabel.htmlFor = 'input-textOverlay-color';
   colorLabel.textContent = 'Metin Rengi';
   const colorInput = document.createElement('input');
   colorInput.type = 'color';
@@ -243,7 +292,7 @@ function createTextOverlaySection(
     onParamChange();
   });
 
-  subControls.append(textGroup, colorGroup);
+  subControls.append(textGroup, scaleGroup, colorGroup);
   section.appendChild(subControls);
   return section;
 }

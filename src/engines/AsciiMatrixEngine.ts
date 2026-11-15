@@ -23,12 +23,12 @@ in vec2 vUv;
 out vec4 fragColor;
 
 void main() {
-  vec2 screenPx = vec2(vUv.x * uResolution.x, (1.0 - vUv.y) * uResolution.y);
+  vec2 screenPx = vUv * uResolution;
   vec2 cellIdx = floor(screenPx / uCellSize);
   vec2 localUv = fract(screenPx / uCellSize);
 
   vec2 centerPx = min(uResolution - 1.0, (cellIdx + 0.5) * uCellSize);
-  vec2 sampleUv = vec2(centerPx.x / uResolution.x, 1.0 - (centerPx.y / uResolution.y));
+  vec2 sampleUv = centerPx / uResolution;
   vec4 src = texture(uTex, sampleUv);
 
   vec3 bg = vec3(4.0, 8.0, 4.0) / 255.0;
@@ -38,8 +38,8 @@ void main() {
   }
 
   float lum = dot(src.rgb, vec3(0.299, 0.587, 0.114));
-  float charIdx = clamp(floor(lum * (uCharCount - 1.0)), 0.0, uCharCount - 1.0);
-  vec2 atlasUv = vec2((charIdx + localUv.x) / uCharCount, 1.0 - localUv.y);
+  float charIdx = clamp(floor(lum * uCharCount), 0.0, uCharCount - 1.0);
+  vec2 atlasUv = vec2((charIdx + localUv.x) / uCharCount, localUv.y);
   float glyphAlpha = texture(uAtlas, atlasUv).a;
 
   vec3 fg;
@@ -66,13 +66,21 @@ export class AsciiMatrixEngine implements IImageEngine<AsciiMatrixParams> {
   private cachedAtlasKey = '';
   private cachedAtlasCanvas: HTMLCanvasElement | null = null;
 
-  private getGlyphAtlas(chars: string, cellW: number, cellH: number): HTMLCanvasElement {
-    const key = `${chars}|${cellW}x${cellH}`;
-    if (this.cachedAtlasKey === key && this.cachedAtlasCanvas) {
+  private getGlyphAtlas(chars: readonly string[], cellW: number, cellH: number): HTMLCanvasElement {
+    const key = `${chars.join('')}|${cellW}x${cellH}`;
+    if (
+      this.cachedAtlasKey === key &&
+      this.cachedAtlasCanvas &&
+      this.cachedAtlasCanvas.width === chars.length * cellW &&
+      this.cachedAtlasCanvas.height === cellH
+    ) {
       return this.cachedAtlasCanvas;
     }
 
-    const atlasCanvas = canvasPool.getCanvas('ascii_atlas', chars.length * cellW, cellH);
+    // CanvasPool dışındaki özel tuval: export sonrası releaseExcept tarafından sıfırlanmaz
+    const atlasCanvas = this.cachedAtlasCanvas ?? document.createElement('canvas');
+    atlasCanvas.width = Math.max(1, chars.length * cellW);
+    atlasCanvas.height = Math.max(1, cellH);
     const atlasCtx = canvasPool.getContext2D(atlasCanvas);
     atlasCtx.clearRect(0, 0, atlasCanvas.width, atlasCanvas.height);
     atlasCtx.fillStyle = '#ffffff';
@@ -100,7 +108,7 @@ export class AsciiMatrixEngine implements IImageEngine<AsciiMatrixParams> {
     const cellH = Math.max(6, Math.round(params.fontSize * context.referenceScale));
     const cellW = Math.max(3, Math.round(cellH * 0.6));
     const isPreset = params.charSetKey !== 'custom';
-    const chars = isPreset
+    const rawChars = isPreset
       ? CHAR_SETS[
           params.charSetKey === 'binary'
             ? 'binary'
@@ -109,11 +117,12 @@ export class AsciiMatrixEngine implements IImageEngine<AsciiMatrixParams> {
             : 'density'
         ]
       : params.customText || 'ANOMALIES';
+    const glyphs = Array.from(rawChars);
 
     const outputCanvas = canvasPool.getCanvas('ascii_output', w, h);
 
     if (isPreset && context.preferGpu && webgl2Pipeline.canProcess(w, h)) {
-      const atlasCanvas = this.getGlyphAtlas(chars, cellW, cellH);
+      const atlasCanvas = this.getGlyphAtlas(glyphs, cellW, cellH);
       if (webgl2Pipeline.canProcess(atlasCanvas.width, atlasCanvas.height)) {
         const ok = this.renderWebGL2(
           sourceCanvas,
@@ -123,7 +132,7 @@ export class AsciiMatrixEngine implements IImageEngine<AsciiMatrixParams> {
           h,
           cellW,
           cellH,
-          chars.length,
+          glyphs.length,
           params.colorMode
         );
         if (ok) return outputCanvas;
@@ -138,7 +147,7 @@ export class AsciiMatrixEngine implements IImageEngine<AsciiMatrixParams> {
       cellW,
       cellH,
       isPreset,
-      chars,
+      glyphs,
       params.colorMode
     );
   }
@@ -157,11 +166,11 @@ export class AsciiMatrixEngine implements IImageEngine<AsciiMatrixParams> {
     const gl = webgl2Pipeline.getContext();
     if (!gl) return false;
 
-    const program = webgl2Pipeline.compileQuadProgram('ascii_v1', ASCII_FS);
+    const program = webgl2Pipeline.compileQuadProgram('ascii_v2', ASCII_FS);
     if (!program) return false;
 
     const srcTex = webgl2Pipeline.uploadCanvasTexture(sourceCanvas, true);
-    const atlasTex = webgl2Pipeline.uploadCanvasTexture(atlasCanvas, true);
+    const atlasTex = webgl2Pipeline.uploadCanvasTexture(atlasCanvas, false);
     if (!srcTex || !atlasTex) {
       if (srcTex) gl.deleteTexture(srcTex);
       if (atlasTex) gl.deleteTexture(atlasTex);
@@ -186,7 +195,7 @@ export class AsciiMatrixEngine implements IImageEngine<AsciiMatrixParams> {
         colorMode === 'matrix' ? 0 : colorMode === 'amber' ? 1 : 2
       );
 
-      webgl2Pipeline.drawQuad(program, w, h, false, null);
+      webgl2Pipeline.drawQuad(program, w, h, true, null);
       return webgl2Pipeline.copyToCanvas(outputCanvas);
     } finally {
       gl.deleteTexture(srcTex);
@@ -202,7 +211,7 @@ export class AsciiMatrixEngine implements IImageEngine<AsciiMatrixParams> {
     cellW: number,
     cellH: number,
     isPreset: boolean,
-    chars: string,
+    chars: readonly string[],
     colorMode: AsciiMatrixParams['colorMode']
   ): HTMLCanvasElement {
     const ctx = canvasPool.getContext2D(outputCanvas);
@@ -237,7 +246,7 @@ export class AsciiMatrixEngine implements IImageEngine<AsciiMatrixParams> {
 
         let charToDraw: string;
         if (isPreset) {
-          const charIdx = Math.min(chars.length - 1, Math.floor(lum * (chars.length - 1)));
+          const charIdx = Math.min(chars.length - 1, Math.floor(lum * chars.length));
           charToDraw = chars[charIdx] ?? ' ';
         } else {
           charToDraw = chars[customCharIdx % chars.length] ?? ' ';

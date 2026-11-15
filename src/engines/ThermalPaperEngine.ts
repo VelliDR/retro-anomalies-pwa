@@ -27,8 +27,8 @@ export function processThermalDots(
   scale: number
 ): ThermalDotsResult {
   const dSize = Math.max(2, Math.round(3 * scale));
-  const matrixCols = Math.max(1, Math.floor(w / dSize));
-  const matrixRows = Math.max(1, Math.floor(h / dSize));
+  const matrixCols = Math.max(1, Math.ceil(w / dSize));
+  const matrixRows = Math.max(1, Math.ceil(h / dSize));
 
   const grid = downsampleAreaAverage(srcPixels, w, h, matrixCols, matrixRows);
   const dots = new Uint8Array(matrixCols * matrixRows);

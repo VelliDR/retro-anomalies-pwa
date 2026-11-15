@@ -124,7 +124,7 @@ export function processPixelArtGrid(
   referenceScale: number
 ): PixelArtGridResult {
   const scaledPixelSize = params.pixelSize * referenceScale;
-  const targetDim = Math.max(16, Math.min(w, Math.round(scaledPixelSize)));
+  const targetDim = Math.max(16, Math.min(Math.max(w, h), Math.round(scaledPixelSize)));
   const scale = targetDim / Math.max(w, h);
   const smallW = Math.max(8, Math.floor(w * scale));
   const smallH = Math.max(8, Math.floor(h * scale));

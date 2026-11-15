@@ -2,13 +2,14 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anomalies // Retro Media Lab</title>
 
     <!-- PWA & Mobil Temalandırma -->
     <meta name="theme-color" content="#000000">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" type="image/png" href="./icon-192.png">
     <link rel="apple-touch-icon" href="./icon-192.png">
 
     <script type="module" src="/src/main.ts"></script>
@@ -18,7 +19,7 @@
     <header class="app-header">
         <div>
             <div class="logo">
-                <span class="badge">v3.0-ts</span>
+                <span class="badge">v2.08</span>
                 <h1>Koca Bir Saçmalık</h1>
             </div>
             <p class="subtitle">Hitorie - One Me Two Heart</p>
@@ -82,22 +83,22 @@
         <section class="controls-section">
             <!-- MOTOR SEÇİM BARI -->
             <div class="engine-selector-wrapper">
-                <label class="section-label" id="engineSectionLabel">EFEKT MOTORU</label>
+                <span class="section-label" id="engineSectionLabel">EFEKT MOTORU</span>
                 <div class="engine-scroll-bar" id="engineBar" role="group" aria-labelledby="engineSectionLabel">
-                    <button type="button" class="engine-btn active" data-engine="pixelart">👾 Pixel Art</button>
-                    <button type="button" class="engine-btn" data-engine="glitch">🌀 Spider Glitch</button>
-                    <button type="button" class="engine-btn" data-engine="sensorcorrupt">🔌 Sensor Corrupt</button>
-                    <button type="button" class="engine-btn" data-engine="textglitch">🔤 Glitch Tipografi</button>
-                    <button type="button" class="engine-btn" data-engine="crttv">📺 CRT TV</button>
-                    <button type="button" class="engine-btn" data-engine="ascii">💻 ASCII Matrix</button>
-                    <button type="button" class="engine-btn" data-engine="thermalpaper">🧾 Market Fişi</button>
-                    <button type="button" class="engine-btn" data-engine="flir">🌡️ Termal Görüş</button>
-                    <button type="button" class="engine-btn" data-engine="cmyk">🖨️ CMYK Matbaa</button>
-                    <button type="button" class="engine-btn" data-engine="fanzine">📄 Kötü Fotokopi</button>
-                    <button type="button" class="engine-btn" data-engine="colorclash">📼 Color Clash</button>
-                    <button type="button" class="engine-btn" data-engine="vangogh">🎨 Van Gogh</button>
-                    <button type="button" class="engine-btn" data-engine="minecraft">🎮 Minecraft</button>
-                    <button type="button" class="engine-btn" data-engine="postcard">📮 Kartpostal / Pul</button>
+                    <button type="button" class="engine-btn active" data-engine="pixelart" aria-pressed="true">👾 Pixel Art</button>
+                    <button type="button" class="engine-btn" data-engine="glitch" aria-pressed="false">🌀 Spider Glitch</button>
+                    <button type="button" class="engine-btn" data-engine="sensorcorrupt" aria-pressed="false">🔌 Sensor Corrupt</button>
+                    <button type="button" class="engine-btn" data-engine="textglitch" aria-pressed="false">🔤 Glitch Tipografi</button>
+                    <button type="button" class="engine-btn" data-engine="crttv" aria-pressed="false">📺 CRT TV</button>
+                    <button type="button" class="engine-btn" data-engine="ascii" aria-pressed="false">💻 ASCII Matrix</button>
+                    <button type="button" class="engine-btn" data-engine="thermalpaper" aria-pressed="false">🧾 Market Fişi</button>
+                    <button type="button" class="engine-btn" data-engine="flir" aria-pressed="false">🌡️ Termal Görüş</button>
+                    <button type="button" class="engine-btn" data-engine="cmyk" aria-pressed="false">🖨️ CMYK Matbaa</button>
+                    <button type="button" class="engine-btn" data-engine="fanzine" aria-pressed="false">📄 Kötü Fotokopi</button>
+                    <button type="button" class="engine-btn" data-engine="colorclash" aria-pressed="false">📼 Color Clash</button>
+                    <button type="button" class="engine-btn" data-engine="vangogh" aria-pressed="false">🎨 Van Gogh</button>
+                    <button type="button" class="engine-btn" data-engine="minecraft" aria-pressed="false">🎮 Minecraft</button>
+                    <button type="button" class="engine-btn" data-engine="postcard" aria-pressed="false">📮 Kartpostal / Pul</button>
                 </div>
             </div>
 
@@ -108,7 +109,7 @@
 
             <!-- ESNEK DIŞA AKTARMA AYARLARI -->
             <div class="export-card" id="exportOptionsCard" hidden>
-                <label class="section-label">DIŞA AKTARMA SEÇENEKLERİ</label>
+                <span class="section-label">DIŞA AKTARMA SEÇENEKLERİ</span>
                 <div class="export-grid">
                     <div class="export-field">
                         <label for="exportFormat">Format</label>
@@ -139,6 +140,7 @@
                 <button type="button" id="btnDownload" class="btn btn-primary" disabled>💾 Dışa Aktar</button>
                 <button type="button" id="btnShare" class="btn btn-secondary" hidden disabled>📤 Paylaş</button>
             </div>
+            <div id="statusToast" class="status-toast" role="status" aria-live="polite" hidden></div>
         </section>
     </main>
 

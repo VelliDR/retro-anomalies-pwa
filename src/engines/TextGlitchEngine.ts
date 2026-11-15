@@ -23,18 +23,23 @@ export class TextGlitchEngine implements IImageEngine<TextGlitchParams> {
     const text = params.text;
     if (!text || text.trim() === '') return outputCanvas;
 
-    const fSize = Math.max(14, Math.round(params.fontSize * scale));
+    let fSize = Math.max(14, Math.round(params.fontSize * scale));
     ctx.save();
 
     if (params.style === 'vhs') {
-      const vhsFontSize = Math.max(12, Math.round(fSize * 0.75));
+      let vhsFontSize = Math.max(12, Math.round(fSize * 0.75));
+      const displayText = `PLAY ► ${text.toUpperCase()}`;
       ctx.font = `bold ${vhsFontSize}px "Courier New", Courier, monospace`;
+      const vhsMetrics = ctx.measureText(displayText);
+      if (vhsMetrics.width > w * 0.88 && vhsMetrics.width > 0) {
+        vhsFontSize = Math.max(10, Math.floor(vhsFontSize * ((w * 0.88) / vhsMetrics.width)));
+        ctx.font = `bold ${vhsFontSize}px "Courier New", Courier, monospace`;
+      }
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
 
       const posX = Math.round(w * 0.05);
       const posY = Math.round(h - h * 0.08);
-      const displayText = `PLAY ► ${text.toUpperCase()}`;
 
       ctx.fillStyle = '#000000';
       ctx.fillText(displayText, posX + 2 * scale, posY + 2 * scale);
@@ -47,6 +52,11 @@ export class TextGlitchEngine implements IImageEngine<TextGlitchParams> {
       ctx.fillRect(0, lineY, w, Math.max(1, Math.round(2 * scale)));
     } else if (params.style === 'rgb_shift') {
       ctx.font = `900 ${fSize}px "Impact", "Arial Black", sans-serif`;
+      const rgbMetrics = ctx.measureText(text);
+      if (rgbMetrics.width > w * 0.88 && rgbMetrics.width > 0) {
+        fSize = Math.max(12, Math.floor(fSize * ((w * 0.88) / rgbMetrics.width)));
+        ctx.font = `900 ${fSize}px "Impact", "Arial Black", sans-serif`;
+      }
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
@@ -82,31 +92,44 @@ export class TextGlitchEngine implements IImageEngine<TextGlitchParams> {
         sliceH
       );
     } else {
+      // Yalnızca damgayı eskitmek için ayrı geçici katman kullan (fotoğraf piksellerini delme)
+      const stampCanvas = canvasPool.getCanvas('textglitch_stamp', w, h);
+      const stampCtx = canvasPool.getContext2D(stampCanvas);
+      stampCtx.save();
+      stampCtx.clearRect(0, 0, w, h);
+
+      stampCtx.font = `900 ${fSize}px "Impact", "Arial Black", sans-serif`;
+      const initialMetrics = stampCtx.measureText(text);
+      const maxBoxW = w * 0.82;
+      if (initialMetrics.width + fSize * 0.8 > maxBoxW && initialMetrics.width > 0) {
+        fSize = Math.max(12, Math.floor(fSize * (maxBoxW / (initialMetrics.width + fSize * 0.8))));
+        stampCtx.font = `900 ${fSize}px "Impact", "Arial Black", sans-serif`;
+      }
+
       const centerX = w / 2;
       const centerY = h / 2;
 
-      ctx.translate(centerX, centerY);
-      ctx.rotate((-12 * Math.PI) / 180);
+      stampCtx.translate(centerX, centerY);
+      stampCtx.rotate((-12 * Math.PI) / 180);
 
-      ctx.font = `900 ${fSize}px "Impact", "Arial Black", sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
+      stampCtx.textAlign = 'center';
+      stampCtx.textBaseline = 'middle';
 
-      const metrics = ctx.measureText(text);
+      const metrics = stampCtx.measureText(text);
       const padX = Math.round(fSize * 0.4);
       const padY = Math.round(fSize * 0.2);
       const boxW = metrics.width + padX * 2;
       const boxH = fSize + padY * 2;
       const borderW = Math.max(3, Math.round(fSize * 0.1));
 
-      ctx.strokeStyle = '#dc2626';
-      ctx.lineWidth = borderW;
-      ctx.strokeRect(-boxW / 2, -boxH / 2, boxW, boxH);
+      stampCtx.strokeStyle = '#dc2626';
+      stampCtx.lineWidth = borderW;
+      stampCtx.strokeRect(-boxW / 2, -boxH / 2, boxW, boxH);
 
-      ctx.fillStyle = '#dc2626';
-      ctx.fillText(text, 0, 0);
+      stampCtx.fillStyle = '#dc2626';
+      stampCtx.fillText(text, 0, 0);
 
-      ctx.globalCompositeOperation = 'destination-out';
+      stampCtx.globalCompositeOperation = 'destination-out';
       const dotCount = Math.floor(boxW * boxH * 0.012);
       const rng = createSeededRng(8842);
 
@@ -114,10 +137,13 @@ export class TextGlitchEngine implements IImageEngine<TextGlitchParams> {
         const rx = (rng() - 0.5) * boxW;
         const ry = (rng() - 0.5) * boxH;
         const rRadius = rng() * (2.5 * scale) + 0.5;
-        ctx.beginPath();
-        ctx.arc(rx, ry, rRadius, 0, Math.PI * 2);
-        ctx.fill();
+        stampCtx.beginPath();
+        stampCtx.arc(rx, ry, rRadius, 0, Math.PI * 2);
+        stampCtx.fill();
       }
+
+      stampCtx.restore();
+      ctx.drawImage(stampCanvas, 0, 0);
     }
 
     ctx.restore();

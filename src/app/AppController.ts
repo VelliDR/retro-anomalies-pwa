@@ -65,6 +65,7 @@ export class AppController {
   private readonly btnUpload = document.getElementById('btnUpload') as HTMLButtonElement | null;
   private readonly btnDownload = document.getElementById('btnDownload') as HTMLButtonElement | null;
   private readonly btnShare = document.getElementById('btnShare') as HTMLButtonElement | null;
+  private readonly statusToast = document.getElementById('statusToast');
   private readonly gpuStatusBadge = document.getElementById(
     'gpuStatusBadge'
   ) as HTMLButtonElement | null;
@@ -81,9 +82,16 @@ export class AppController {
   private currentTilt: TiltState = { tiltX: 0, tiltY: 0 };
   private preferGpu = webgl2Pipeline.getCapabilities().available;
   private renderPending = false;
+  private isRenderingPreview = false;
+  private queuedPreviewRender = false;
+  private activePreviewPromise: Promise<void> | null = null;
+  private isExporting = false;
+  private dragDepth = 0;
   private activeRenderController: AbortController | null = null;
   private renderSequence = 0;
   private shakeTimerId: number | null = null;
+  private shakeBaseIntensity: number | null = null;
+  private toastTimerId: number | null = null;
 
   private compareEnabled = false;
   private compareSplitPct = 50;
@@ -99,6 +107,21 @@ export class AppController {
     this.updateExportQualityState();
     this.updateCompareVisuals();
     this.initEventListeners();
+  }
+
+  private showStatus(message: string, isError = false): void {
+    if (!this.statusToast) {
+      if (isError) console.error(message);
+      return;
+    }
+    if (this.toastTimerId !== null) window.clearTimeout(this.toastTimerId);
+    this.statusToast.textContent = message;
+    this.statusToast.classList.toggle('error', isError);
+    this.statusToast.hidden = false;
+    this.toastTimerId = window.setTimeout(() => {
+      if (this.statusToast) this.statusToast.hidden = true;
+      this.toastTimerId = null;
+    }, 4500);
   }
 
   private initShareSupport(): void {
@@ -193,8 +216,16 @@ export class AppController {
       this.compareCanvas.width = w;
       this.compareCanvas.height = h;
     }
+    const sw = this.previewSourceCanvas.width;
+    const sh = this.previewSourceCanvas.height;
     this.compareCtx.clearRect(0, 0, w, h);
-    this.compareCtx.drawImage(this.previewSourceCanvas, 0, 0, w, h);
+    if (w > sw && h > sh) {
+      const dx = Math.round((w - sw) / 2);
+      const dy = Math.round((h - sh) / 2);
+      this.compareCtx.drawImage(this.previewSourceCanvas, dx, dy, sw, sh);
+    } else {
+      this.compareCtx.drawImage(this.previewSourceCanvas, 0, 0, w, h);
+    }
   }
 
   private updateSplitFromPointer(clientX: number): void {
@@ -214,21 +245,45 @@ export class AppController {
       this.render();
     });
 
-    this.btnUpload?.addEventListener('click', () => this.fileInput?.click());
+    this.btnUpload?.addEventListener('click', () => {
+      void this.motion.init();
+      this.fileInput?.click();
+    });
 
     if (this.dropZone) {
       this.dropZone.addEventListener('click', () => {
-        if (!this.previewSourceCanvas) this.fileInput?.click();
+        if (!this.previewSourceCanvas) {
+          void this.motion.init();
+          this.fileInput?.click();
+        }
       });
       this.dropZone.addEventListener('keydown', (e) => {
         if (!this.previewSourceCanvas && (e.key === 'Enter' || e.key === ' ')) {
           e.preventDefault();
+          void this.motion.init();
           this.fileInput?.click();
         }
       });
-      this.dropZone.addEventListener('dragover', (e) => e.preventDefault());
+      this.dropZone.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        this.dragDepth++;
+        this.dropZone?.classList.add('drag-over');
+      });
+      this.dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        this.dropZone?.classList.add('drag-over');
+      });
+      this.dropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        this.dragDepth = Math.max(0, this.dragDepth - 1);
+        if (this.dragDepth === 0) {
+          this.dropZone?.classList.remove('drag-over');
+        }
+      });
       this.dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
+        this.dragDepth = 0;
+        this.dropZone?.classList.remove('drag-over');
         const file = e.dataTransfer?.files[0];
         if (file) void this.handleFile(file);
       });
@@ -236,6 +291,7 @@ export class AppController {
 
     this.fileInput?.addEventListener('change', () => {
       const file = this.fileInput?.files?.[0];
+      if (this.fileInput) this.fileInput.value = '';
       if (file) void this.handleFile(file);
     });
 
@@ -247,8 +303,12 @@ export class AppController {
       const engineAttr = btn.dataset.engine as EngineId | undefined;
       if (!engineAttr || !(engineAttr in this.engines)) return;
 
-      document.querySelectorAll('.engine-btn').forEach((b) => b.classList.remove('active'));
+      this.engineBar?.querySelectorAll('.engine-btn').forEach((b) => {
+        b.classList.remove('active');
+        b.setAttribute('aria-pressed', 'false');
+      });
       btn.classList.add('active');
+      btn.setAttribute('aria-pressed', 'true');
 
       this.activeEngine = engineAttr;
       this.renderUIControls();
@@ -295,8 +355,10 @@ export class AppController {
     if (this.activeEngine !== 'glitch') return;
     if (this.shakeTimerId !== null) window.clearTimeout(this.shakeTimerId);
 
-    const oldIntensity = this.params.glitch.intensity;
-    this.params.glitch.intensity = Math.min(100, oldIntensity + 30);
+    if (this.shakeBaseIntensity === null) {
+      this.shakeBaseIntensity = this.params.glitch.intensity;
+    }
+    this.params.glitch.intensity = Math.min(100, this.shakeBaseIntensity + 30);
 
     const input = document.getElementById('input-intensity') as HTMLInputElement | null;
     const label = document.getElementById('val-intensity');
@@ -306,11 +368,18 @@ export class AppController {
     this.render();
 
     this.shakeTimerId = window.setTimeout(() => {
-      this.params.glitch.intensity = oldIntensity;
-      if (input) input.value = String(oldIntensity);
-      if (label) label.textContent = `${oldIntensity}%`;
+      const restored = this.shakeBaseIntensity ?? this.params.glitch.intensity;
+      this.shakeBaseIntensity = null;
       this.shakeTimerId = null;
-      this.render();
+      this.params.glitch.intensity = restored;
+
+      if (this.activeEngine === 'glitch') {
+        const curInput = document.getElementById('input-intensity') as HTMLInputElement | null;
+        const curLabel = document.getElementById('val-intensity');
+        if (curInput) curInput.value = String(restored);
+        if (curLabel) curLabel.textContent = `${restored}%`;
+        this.render();
+      }
     }, 1000);
   }
 
@@ -328,11 +397,14 @@ export class AppController {
         this.btnUpload.disabled = true;
       }
 
-      canvasPool.releaseAll();
-      this.fullSourceCanvas = null;
-      this.previewSourceCanvas = null;
-
-      const res = await ImageLoader.loadFromFile(file, 1200);
+      const res = await ImageLoader.loadFromFile(file, 1200, () => {
+        this.activeRenderController?.abort();
+        ++this.renderSequence;
+        this.queuedPreviewRender = false;
+        this.fullSourceCanvas = null;
+        this.previewSourceCanvas = null;
+        canvasPool.releaseAll();
+      });
       this.fullSourceCanvas = res.fullCanvas;
       this.previewSourceCanvas = res.previewCanvas;
 
@@ -361,23 +433,30 @@ export class AppController {
         this.btnUpload.disabled = false;
       }
       const message = err instanceof Error ? err.message : 'Görsel yüklenirken bir hata oluştu.';
-      alert(message);
+      this.showStatus(message, true);
     }
   }
 
   private async executeEngineAsync<K extends EngineId>(
     key: K,
     targetSourceCanvas: HTMLCanvasElement,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    options?: {
+      params?: EngineParamsMap[K];
+      textOverlay?: TextOverlayParams;
+      tilt?: TiltState;
+      preferGpu?: boolean;
+    }
   ): Promise<HTMLCanvasElement> {
     const engine = this.engines[key];
-    const params = this.params[key];
+    const params = options?.params ?? this.params[key];
+    const textOverlayParams = options?.textOverlay ?? this.textOverlayParams;
     const maxDim = Math.max(targetSourceCanvas.width, targetSourceCanvas.height);
 
     const context: RenderContext = {
       referenceScale: maxDim / 1200,
-      tilt: this.currentTilt,
-      preferGpu: this.preferGpu,
+      tilt: options?.tilt ?? this.currentTilt,
+      preferGpu: options?.preferGpu ?? this.preferGpu,
     };
 
     const resultCanvas = engine.renderAsync
@@ -391,13 +470,13 @@ export class AppController {
     }
 
     if (resultCanvas !== targetSourceCanvas) {
-      if (this.textOverlayParams.comicFrame) {
+      if (textOverlayParams.comicFrame) {
         this.textOverlay.renderComicFrame(resultCanvas);
       }
-      if (this.textOverlayParams.enabled && this.textOverlayParams.text) {
-        this.textOverlay.renderOnomatopoeia(resultCanvas, this.textOverlayParams.text, {
-          color: this.textOverlayParams.color,
-          scale: this.textOverlayParams.scale,
+      if (textOverlayParams.enabled && textOverlayParams.text) {
+        this.textOverlay.renderOnomatopoeia(resultCanvas, textOverlayParams.text, {
+          color: textOverlayParams.color,
+          scale: textOverlayParams.scale,
         });
       }
     }
@@ -407,24 +486,42 @@ export class AppController {
 
   render(): void {
     if (!this.previewSourceCanvas) return;
+    if (this.isExporting) {
+      this.queuedPreviewRender = true;
+      return;
+    }
     if (!this.renderPending) {
       this.renderPending = true;
       requestAnimationFrame(() => {
-        this.doRender();
         this.renderPending = false;
+        this.doRender();
       });
     }
   }
 
   private doRender(): void {
-    if (!this.previewSourceCanvas || !this.mainCanvas || !this.ctx) return;
+    if (!this.previewSourceCanvas || !this.mainCanvas || !this.ctx || this.isExporting) return;
+
+    if (this.isRenderingPreview) {
+      this.queuedPreviewRender = true;
+      this.activeRenderController?.abort();
+      return;
+    }
 
     this.activeRenderController?.abort();
     const controller = new AbortController();
     this.activeRenderController = controller;
     const seq = ++this.renderSequence;
 
-    void this.runPreviewRender(this.activeEngine, this.previewSourceCanvas, seq, controller.signal);
+    this.isRenderingPreview = true;
+    const renderPromise = this.runPreviewRender(
+      this.activeEngine,
+      this.previewSourceCanvas,
+      seq,
+      controller.signal
+    );
+    this.activePreviewPromise = renderPromise;
+    void renderPromise;
   }
 
   private async runPreviewRender(
@@ -433,7 +530,10 @@ export class AppController {
     seq: number,
     signal: AbortSignal
   ): Promise<void> {
-    if (!this.mainCanvas || !this.ctx) return;
+    if (!this.mainCanvas || !this.ctx) {
+      this.isRenderingPreview = false;
+      return;
+    }
     try {
       const resultCanvas = await this.executeEngineAsync(engineId, sourceCanvas, signal);
       if (signal.aborted || seq !== this.renderSequence) return;
@@ -444,6 +544,14 @@ export class AppController {
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return;
       console.error('Render hatası:', err);
+      this.showStatus('Önizleme oluşturulurken bir hata oluştu.', true);
+    } finally {
+      this.isRenderingPreview = false;
+      this.activePreviewPromise = null;
+      if (this.queuedPreviewRender && !this.isExporting && this.previewSourceCanvas) {
+        this.queuedPreviewRender = false;
+        this.doRender();
+      }
     }
   }
 
@@ -499,9 +607,16 @@ export class AppController {
   }
 
   private exportHighResResult(mode: 'download' | 'share'): void {
-    if (!this.fullSourceCanvas || !this.btnDownload) return;
+    if (this.isExporting || !this.fullSourceCanvas || !this.btnDownload) return;
+    this.isExporting = true;
+
     const fullSource = this.fullSourceCanvas;
     const engineId = this.activeEngine;
+    const paramsSnapshot = structuredClone(this.params[engineId]);
+    const overlaySnapshot = structuredClone(this.textOverlayParams);
+    const tiltSnapshot = { ...this.currentTilt };
+    const preferGpuSnapshot = this.preferGpu;
+
     const activeBtn = mode === 'share' && this.btnShare ? this.btnShare : this.btnDownload;
     const oldDownloadText = this.btnDownload.textContent ?? '💾 Dışa Aktar';
     const oldShareText = this.btnShare?.textContent ?? '📤 Paylaş';
@@ -516,12 +631,24 @@ export class AppController {
     window.setTimeout(() => {
       void (async () => {
         try {
+          this.activeRenderController?.abort();
+          ++this.renderSequence;
+          this.queuedPreviewRender = false;
+          if (this.activePreviewPromise) {
+            await this.activePreviewPromise.catch(() => undefined);
+          }
+
           const exportSrc = this.resolveExportSource(fullSource);
-          const highResCanvas = await this.executeEngineAsync(engineId, exportSrc);
+          const highResCanvas = await this.executeEngineAsync(engineId, exportSrc, undefined, {
+            params: paramsSnapshot,
+            textOverlay: overlaySnapshot,
+            tilt: tiltSnapshot,
+            preferGpu: preferGpuSnapshot,
+          });
           const blob = await this.canvasToBlobAsync(highResCanvas, mimeType, quality);
 
           if (!blob) {
-            alert('Görsel oluşturulamadı, bellek yetersiz olabilir.');
+            this.showStatus('Görsel oluşturulamadı, bellek yetersiz olabilir.', true);
             return;
           }
 
@@ -548,13 +675,15 @@ export class AppController {
           link.click();
           document.body.removeChild(link);
           window.setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+          this.showStatus(`Kaydedildi (${highResCanvas.width}×${highResCanvas.height})`);
         } catch (err) {
           if (err instanceof Error && err.name === 'AbortError') return;
           const message = err instanceof Error ? err.message : String(err);
-          alert(`Dışa aktarma sırasında hata oluştu: ${message}`);
+          this.showStatus(`Dışa aktarma sırasında hata oluştu: ${message}`, true);
         } finally {
           // Yüksek çözünürlüklü geçici canvas'ları bellekten temizle (mobil Safari koruması)
           canvasPool.releaseExcept(['loader_full', 'loader_preview']);
+          this.isExporting = false;
           if (this.btnDownload) {
             this.btnDownload.textContent = oldDownloadText;
             this.btnDownload.disabled = false;
@@ -562,6 +691,10 @@ export class AppController {
           if (this.btnShare) {
             this.btnShare.textContent = oldShareText;
             this.btnShare.disabled = false;
+          }
+          if (this.queuedPreviewRender && this.previewSourceCanvas) {
+            this.queuedPreviewRender = false;
+            this.render();
           }
         }
       })();
@@ -586,7 +719,19 @@ export class AppController {
       activeParams,
       this.textOverlayParams,
       {
-        onParamChange: () => this.render(),
+        onParamChange: () => {
+          if (this.activeEngine === 'glitch') {
+            if (this.shakeTimerId !== null) {
+              window.clearTimeout(this.shakeTimerId);
+              this.shakeTimerId = null;
+              this.shakeBaseIntensity = null;
+            }
+            if (this.params.glitch.gyroEffect) {
+              void this.motion.init();
+            }
+          }
+          this.render();
+        },
         onAction: (actionId) => {
           if (actionId === 'reroll-seed' && this.activeEngine === 'sensorcorrupt') {
             this.params.sensorcorrupt.seed = Math.floor(Math.random() * 999999);

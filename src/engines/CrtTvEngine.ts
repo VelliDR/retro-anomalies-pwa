@@ -144,7 +144,7 @@ export class CrtTvEngine implements IImageEngine<CrtTvParams> {
         gl.bindTexture(gl.TEXTURE_2D, srcTex);
         gl.uniform1i(gl.getUniformLocation(blurProg, 'uTex'), 0);
         gl.uniform2f(gl.getUniformLocation(blurProg, 'uTexelStep'), radiusScale / bw, 0);
-        webgl2Pipeline.drawQuad(blurProg, bw, bh, true, fboA);
+        webgl2Pipeline.drawQuad(blurProg, bw, bh, false, fboA);
 
         gl.useProgram(blurProg);
         gl.activeTexture(gl.TEXTURE0);
@@ -218,6 +218,8 @@ export class CrtTvEngine implements IImageEngine<CrtTvParams> {
       ctx.restore();
     }
 
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-atop';
     ctx.fillStyle = 'rgba(0, 0, 0, 0.40)';
     for (let y = 0; y < h; y += gap) {
       ctx.fillRect(0, y, w, lineH);
@@ -237,6 +239,7 @@ export class CrtTvEngine implements IImageEngine<CrtTvParams> {
 
     ctx.fillStyle = radGrad;
     ctx.fillRect(0, 0, w, h);
+    ctx.restore();
 
     return outputCanvas;
   }

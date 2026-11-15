@@ -153,11 +153,12 @@ void main() {
   float hU = texture(uNormalTex, vUv + vec2(0.0, texel.y)).b;
 
   vec2 analyticSlope = normSample.rg * 2.0 - 1.0;
+  analyticSlope.y = -analyticSlope.y;
   vec2 macroGrad = vec2(hR - hL, hU - hD) * 1.4;
   vec2 combinedSlope = (analyticSlope * 0.9 + macroGrad) * normSample.a;
 
   // Sol-üst yönlü atölye ışığı (Blinn-Phong)
-  vec3 N = normalize(vec3(-combinedSlope.x, combinedSlope.y, 0.85));
+  vec3 N = normalize(vec3(-combinedSlope.x, -combinedSlope.y, 0.85));
   vec3 L = normalize(vec3(-0.55, 0.65, 0.82));
   vec3 V = vec3(0.0, 0.0, 1.0);
   vec3 H = normalize(L + V);
@@ -179,6 +180,7 @@ export class VanGoghEngine implements IImageEngine<VanGoghParams> {
   readonly supportsWebGL2 = true;
   private readonly noise = new PerlinNoise2D();
   private sharedVbo: WebGLBuffer | null = null;
+  private vboEpoch = -1;
 
   render(
     sourceCanvas: HTMLCanvasElement,
@@ -261,7 +263,20 @@ export class VanGoghEngine implements IImageEngine<VanGoghParams> {
       );
       if (ok) return targetCanvas;
 
-      const strokes = generateVanGoghStrokes(pixels, width, height, params, scale, this.noise);
+      const strokes = await workerBridge.computeVanGoghStrokes(
+        pixels,
+        width,
+        height,
+        params,
+        scale,
+        signal
+      );
+      if (signal?.aborted) {
+        const err = new Error('Render cancelled');
+        err.name = 'AbortError';
+        throw err;
+      }
+
       return this.renderCpuFallback(
         sourceCanvas,
         targetCanvas,
@@ -317,7 +332,7 @@ export class VanGoghEngine implements IImageEngine<VanGoghParams> {
       BRUSH_RIBBON_VS,
       BRUSH_RIBBON_FS
     );
-    const lightProg = webgl2Pipeline.compileQuadProgram('vg_impasto_v1', IMPASTO_LIGHT_FS);
+    const lightProg = webgl2Pipeline.compileQuadProgram('vg_impasto_v2', IMPASTO_LIGHT_FS);
     if (!blurProg || !brushProg || !lightProg) return false;
 
     const srcTex = webgl2Pipeline.uploadCanvasTexture(sourceCanvas, true);
@@ -361,8 +376,10 @@ export class VanGoghEngine implements IImageEngine<VanGoghParams> {
       });
 
       // 2. MRT Fırça Ribbon Çizimi (Renk + Analitik Yüzey Normali)
-      if (!this.sharedVbo) {
+      const epoch = webgl2Pipeline.getContextEpoch();
+      if (!this.sharedVbo || this.vboEpoch !== epoch) {
         this.sharedVbo = gl.createBuffer();
+        this.vboEpoch = epoch;
       }
       if (!this.sharedVbo) return false;
 
@@ -374,7 +391,12 @@ export class VanGoghEngine implements IImageEngine<VanGoghParams> {
         gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
         gl.viewport(0, 0, width, height);
         gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendFuncSeparate(
+          gl.SRC_ALPHA,
+          gl.ONE_MINUS_SRC_ALPHA,
+          gl.ONE,
+          gl.ONE_MINUS_SRC_ALPHA
+        );
 
         gl.useProgram(brushProg);
         gl.uniform2f(gl.getUniformLocation(brushProg, 'uResolution'), width, height);

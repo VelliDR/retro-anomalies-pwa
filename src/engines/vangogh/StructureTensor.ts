@@ -119,21 +119,23 @@ export function computeScharrStructureTensor(
   const jxyRaw = new Float32Array(size);
   const gradMag = new Float32Array(size);
 
-  // 3x3 Scharr gradyanı (Sobel'e göre çok daha düşük açısal hata)
-  for (let y = 1; y < sh - 1; y++) {
-    const r0 = (y - 1) * sw;
+  // 3x3 Scharr gradyanı (Sobel'e göre çok daha düşük açısal hata; kenar pikseller clamp ile dahil edilir)
+  for (let y = 0; y < sh; y++) {
+    const r0 = Math.max(0, y - 1) * sw;
     const r1 = y * sw;
-    const r2 = (y + 1) * sw;
+    const r2 = Math.min(sh - 1, y + 1) * sw;
 
-    for (let x = 1; x < sw - 1; x++) {
-      const l00 = lumSmooth[r0 + x - 1] ?? 0;
+    for (let x = 0; x < sw; x++) {
+      const xm1 = Math.max(0, x - 1);
+      const xp1 = Math.min(sw - 1, x + 1);
+      const l00 = lumSmooth[r0 + xm1] ?? 0;
       const l10 = lumSmooth[r0 + x] ?? 0;
-      const l20 = lumSmooth[r0 + x + 1] ?? 0;
-      const l01 = lumSmooth[r1 + x - 1] ?? 0;
-      const l21 = lumSmooth[r1 + x + 1] ?? 0;
-      const l02 = lumSmooth[r2 + x - 1] ?? 0;
+      const l20 = lumSmooth[r0 + xp1] ?? 0;
+      const l01 = lumSmooth[r1 + xm1] ?? 0;
+      const l21 = lumSmooth[r1 + xp1] ?? 0;
+      const l02 = lumSmooth[r2 + xm1] ?? 0;
       const l12 = lumSmooth[r2 + x] ?? 0;
-      const l22 = lumSmooth[r2 + x + 1] ?? 0;
+      const l22 = lumSmooth[r2 + xp1] ?? 0;
 
       const gx = (3 * (l20 + l22 - l00 - l02) + 10 * (l21 - l01)) / 32;
       const gy = (3 * (l02 + l22 - l00 - l20) + 10 * (l12 - l10)) / 32;
@@ -350,7 +352,9 @@ export function generateStratifiedSeeds(
   scale: number,
   rng: () => number
 ): Point2D[] {
-  const cellSize = Math.max(2 * scale, (1 / Math.sqrt(Math.max(1e-5, density))) * scale);
+  // Küçük görüntülerde 1px altı tohum patlamasını önlemek için alt ölçek sınırı uygula
+  const effectiveScale = Math.max(0.5, scale);
+  const cellSize = Math.max(3.0, (1 / Math.sqrt(Math.max(1e-5, density))) * effectiveScale);
   const cols = Math.max(1, Math.ceil(width / cellSize));
   const rows = Math.max(1, Math.ceil(height / cellSize));
   const seeds: Point2D[] = [];

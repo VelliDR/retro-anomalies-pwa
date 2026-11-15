@@ -43,12 +43,15 @@ export class GlitchEngine implements IImageEngine<GlitchParams> {
   readonly id = 'glitch' as const;
   readonly supportsWebGL2 = true;
   private cachedBenDaySize = 0;
+  private benDayCanvas: HTMLCanvasElement | null = null;
   private benDayPattern: CanvasPattern | null = null;
 
   private getBenDayPattern(ctx: CanvasRenderingContext2D, scale: number): CanvasPattern | null {
     const size = Math.max(4, Math.round(5 * scale));
-    if (!this.benDayPattern || this.cachedBenDaySize !== size) {
-      const patCanvas = canvasPool.getCanvas('benday_pattern', size, size);
+    if (!this.benDayPattern || this.cachedBenDaySize !== size || !this.benDayCanvas) {
+      const patCanvas = this.benDayCanvas ?? document.createElement('canvas');
+      patCanvas.width = size;
+      patCanvas.height = size;
       const patCtx = canvasPool.getContext2D(patCanvas);
       patCtx.clearRect(0, 0, size, size);
       patCtx.fillStyle = '#111116';
@@ -56,6 +59,7 @@ export class GlitchEngine implements IImageEngine<GlitchParams> {
       patCtx.arc(size / 2, size / 2, size / 4.2, 0, Math.PI * 2);
       patCtx.fill();
 
+      this.benDayCanvas = patCanvas;
       this.benDayPattern = ctx.createPattern(patCanvas, 'repeat');
       this.cachedBenDaySize = size;
     }
@@ -64,8 +68,8 @@ export class GlitchEngine implements IImageEngine<GlitchParams> {
 
   private createInkCanvas(sourceCanvas: HTMLCanvasElement, w: number, h: number): HTMLCanvasElement {
     // ctx.filter Safari/GPU tutarsızlığından kaçınmak için deterministik piksel ayrıştırma
-    const inkCanvas = canvasPool.getCanvas('glitch_ink', w, h);
-    const inkCtx = canvasPool.getContext2D(inkCanvas);
+    const inkCanvas = canvasPool.getCanvas('glitch_ink', w, h, { willReadFrequently: true });
+    const inkCtx = canvasPool.getContext2D(inkCanvas, { willReadFrequently: true });
     inkCtx.drawImage(sourceCanvas, 0, 0);
     const img = inkCtx.getImageData(0, 0, w, h);
     const d = img.data;
@@ -167,16 +171,26 @@ export class GlitchEngine implements IImageEngine<GlitchParams> {
       const dynamicLum = Math.round(Math.max(30, Math.min(80, baseHsl.l * 100 + (rng() - 0.5) * 30)));
       const dynamicColorStr = `hsl(${dynamicHue}, ${dynamicSat}%, ${dynamicLum}%)`;
 
-      ctx.save();
-      ctx.beginPath();
-
       const hw = shardW * 0.5;
       const hh = shardH * 0.5;
-      ctx.moveTo(cx - hw + (rng() - 0.5) * hw * 0.4, cy - hh + (rng() - 0.5) * hh * 0.4);
-      ctx.lineTo(cx + hw + (rng() - 0.5) * hw * 0.4, cy - hh * 0.5 + (rng() - 0.5) * hh * 0.4);
-      ctx.lineTo(cx + hw * 0.8 + (rng() - 0.5) * hw * 0.4, cy + hh + (rng() - 0.5) * hh * 0.4);
-      ctx.lineTo(cx - hw * 0.7 + (rng() - 0.5) * hw * 0.4, cy + hh * 0.8 + (rng() - 0.5) * hh * 0.4);
-      ctx.closePath();
+      const poly: readonly [number, number][] = [
+        [cx - hw + (rng() - 0.5) * hw * 0.4, cy - hh + (rng() - 0.5) * hh * 0.4],
+        [cx + hw + (rng() - 0.5) * hw * 0.4, cy - hh * 0.5 + (rng() - 0.5) * hh * 0.4],
+        [cx + hw * 0.8 + (rng() - 0.5) * hw * 0.4, cy + hh + (rng() - 0.5) * hh * 0.4],
+        [cx - hw * 0.7 + (rng() - 0.5) * hw * 0.4, cy + hh * 0.8 + (rng() - 0.5) * hh * 0.4],
+      ];
+
+      const traceShardPoly = () => {
+        ctx.beginPath();
+        ctx.moveTo(poly[0]![0], poly[0]![1]);
+        ctx.lineTo(poly[1]![0], poly[1]![1]);
+        ctx.lineTo(poly[2]![0], poly[2]![1]);
+        ctx.lineTo(poly[3]![0], poly[3]![1]);
+        ctx.closePath();
+      };
+
+      ctx.save();
+      traceShardPoly();
       ctx.clip();
 
       ctx.globalAlpha = 0.35;
@@ -209,21 +223,25 @@ export class GlitchEngine implements IImageEngine<GlitchParams> {
         ctx.lineTo(cx + hw, ly + (rng() - 0.5) * 12 * scale);
         ctx.stroke();
       }
+      ctx.restore();
 
+      // Shard poligonu etrafına kromatik cyan / magenta çerçeve çiz
+      ctx.save();
       ctx.globalCompositeOperation = 'source-over';
       ctx.lineWidth = Math.max(1.5, Math.round(2 * scale));
+      ctx.globalAlpha = 0.85;
 
       ctx.save();
       ctx.translate(-1.8 * scale, -1.8 * scale);
       ctx.strokeStyle = '#00f0ff';
-      ctx.globalAlpha = 0.85;
+      traceShardPoly();
       ctx.stroke();
       ctx.restore();
 
       ctx.save();
       ctx.translate(1.8 * scale, 1.8 * scale);
       ctx.strokeStyle = '#ff0055';
-      ctx.globalAlpha = 0.85;
+      traceShardPoly();
       ctx.stroke();
       ctx.restore();
 
@@ -259,11 +277,11 @@ export class GlitchEngine implements IImageEngine<GlitchParams> {
       gl.bindTexture(gl.TEXTURE_2D, srcTex);
       gl.uniform1i(gl.getUniformLocation(program, 'uTex'), 0);
       gl.uniform2f(gl.getUniformLocation(program, 'uResolution'), w, h);
-      gl.uniform2f(gl.getUniformLocation(program, 'uInkShift'), inkShiftX, -inkShiftY);
-      gl.uniform2f(gl.getUniformLocation(program, 'uChromaShift'), chromaShiftX, -chromaShiftY);
+      gl.uniform2f(gl.getUniformLocation(program, 'uInkShift'), inkShiftX, inkShiftY);
+      gl.uniform2f(gl.getUniformLocation(program, 'uChromaShift'), chromaShiftX, chromaShiftY);
       gl.uniform1f(gl.getUniformLocation(program, 'uNormIntensity'), normIntensity);
 
-      webgl2Pipeline.drawQuad(program, w, h, false, null);
+      webgl2Pipeline.drawQuad(program, w, h, true, null);
       return webgl2Pipeline.copyToCanvas(outputCanvas);
     } finally {
       gl.deleteTexture(srcTex);

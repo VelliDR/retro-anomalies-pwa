@@ -22,6 +22,7 @@ interface CellColor {
   r: number;
   g: number;
   b: number;
+  a: number;
   lum: number;
 }
 
@@ -280,7 +281,17 @@ export class MinecraftEngine implements IImageEngine<MinecraftParams> {
     targetCtx.fillRect(0, 0, width, height);
 
     if (mode === 2) {
-      this.renderAdvancedIsometricVoxels(targetCtx, grid, width, height, cols, rows, bSize, scale);
+      this.renderAdvancedIsometricVoxels(
+        targetCtx,
+        grid,
+        width,
+        height,
+        cols,
+        rows,
+        bSize,
+        scale,
+        paletteKey
+      );
     } else {
       this.render2DFlatTexturedMap(targetCtx, grid, cols, rows, bSize, paletteKey);
     }
@@ -421,7 +432,8 @@ export class MinecraftEngine implements IImageEngine<MinecraftParams> {
     sw: number,
     sh: number,
     bSize: number,
-    scale: number
+    scale: number,
+    paletteKey: MinecraftParams['paletteKey']
   ): void {
     const maxStackHeight = Math.max(2, Math.round(14 * scale));
     const heightMap = new Float32Array(sw * sh);
@@ -434,10 +446,11 @@ export class MinecraftEngine implements IImageEngine<MinecraftParams> {
         const r = grid[pIdx] ?? 0;
         const g = grid[pIdx + 1] ?? 0;
         const b = grid[pIdx + 2] ?? 0;
+        const a = (grid[pIdx + 3] ?? 0) / 255;
         const lum = luminance(r, g, b) / 255;
 
-        heightMap[idx] = Math.max(1, Math.round(lum * maxStackHeight));
-        colorMap[idx] = { r, g, b, lum };
+        heightMap[idx] = a < 0.1 ? 0 : Math.max(1, Math.round(lum * maxStackHeight));
+        colorMap[idx] = { r, g, b, a, lum };
       }
     }
 
@@ -450,15 +463,21 @@ export class MinecraftEngine implements IImageEngine<MinecraftParams> {
 
     for (let gy = 0; gy < sh; gy++) {
       for (let gx = 0; gx < sw; gx++) {
-        const hStack = heightMap[gy * sw + gx] ?? 1;
+        const hStack = heightMap[gy * sw + gx] ?? 0;
+        if (hStack <= 0) continue;
         const vOffset = hStack * (sideH * 0.5);
         const isoY = (gy + gx) * (isoH / 2);
 
-        const topY = isoY - vOffset - isoH / 2;
-        const bottomY = isoY + sideH + isoH / 2;
+        const topY = isoY - vOffset;
+        const bottomY = isoY - sideH * 0.5 + isoH + sideH;
         if (topY < minIsoY) minIsoY = topY;
         if (bottomY > maxIsoY) maxIsoY = bottomY;
       }
+    }
+
+    if (!Number.isFinite(minIsoY) || !Number.isFinite(maxIsoY)) {
+      minIsoY = 0;
+      maxIsoY = isoH + sideH;
     }
 
     const minIsoX = -(sh - 1) * (isoW / 2);
@@ -469,8 +488,9 @@ export class MinecraftEngine implements IImageEngine<MinecraftParams> {
     for (let gy = 0; gy < sh; gy++) {
       for (let gx = 0; gx < sw; gx++) {
         const idx = gy * sw + gx;
-        const hStack = heightMap[idx] ?? 1;
+        const hStack = heightMap[idx] ?? 0;
         const cell = colorMap[idx]!;
+        if (cell.a < 0.1 || hStack <= 0) continue;
 
         const drawX = offsetX + (gx - gy) * (isoW / 2);
         const drawY = offsetY + (gy + gx) * (isoH / 2);
@@ -485,29 +505,52 @@ export class MinecraftEngine implements IImageEngine<MinecraftParams> {
         }
 
         let aoFactor = 1.0;
-        if (gx < sw - 1 && (heightMap[gy * sw + (gx + 1)] ?? 0) > hStack) aoFactor -= 0.14;
-        if (gy < sh - 1 && (heightMap[(gy + 1) * sw + gx] ?? 0) > hStack) aoFactor -= 0.14;
+        const rightH = gx < sw - 1 ? (heightMap[gy * sw + (gx + 1)] ?? 0) : 0;
+        const downH = gy < sh - 1 ? (heightMap[(gy + 1) * sw + gx] ?? 0) : 0;
+        if (rightH > hStack) aoFactor -= 0.14;
+        if (downH > hStack) aoFactor -= 0.14;
 
         const totalLight = shadowFactor * aoFactor;
         const topTexKey = this.selectBlockOklab(cell.r, cell.g, cell.b, cell.lum, gx, gy);
         const sideTexKey: BlockType = topTexKey === 'grass_top' ? 'grass_side' : topTexKey;
 
-        const sprite = this.getOrCreateIsoSprite(topTexKey, sideTexKey, isoW, isoH, sideH);
+        const minFrontH = Math.min(rightH, downH);
+        const baseLvl = Math.max(1, minFrontH);
         const spriteX = Math.round(drawX - isoW / 2);
+
+        if (baseLvl < hStack) {
+          const subTopKey: BlockType = topTexKey === 'grass_top' ? 'dirt' : topTexKey;
+          const subSideKey: BlockType = topTexKey === 'grass_top' ? 'dirt' : sideTexKey;
+          const subSprite = this.getOrCreateIsoSprite(subTopKey, subSideKey, isoW, isoH, sideH);
+          for (let lvl = baseLvl; lvl < hStack; lvl += 2) {
+            const subY = Math.round(drawY - lvl * (sideH * 0.5));
+            ctx.drawImage(subSprite, spriteX, subY);
+          }
+        }
+
+        const sprite = this.getOrCreateIsoSprite(topTexKey, sideTexKey, isoW, isoH, sideH);
         const spriteY = Math.round(drawY - vOffset);
         ctx.drawImage(sprite, spriteX, spriteY);
 
-        if (totalLight < 0.98) {
-          ctx.fillStyle = `rgba(0, 0, 0, ${(1 - totalLight) * 0.72})`;
+        if (paletteKey === 'colorful' || totalLight < 0.98) {
+          const baseSpriteY = Math.round(drawY - baseLvl * (sideH * 0.5));
           ctx.beginPath();
           ctx.moveTo(drawX, spriteY);
           ctx.lineTo(drawX + isoW / 2, spriteY + isoH / 2);
-          ctx.lineTo(drawX + isoW / 2, spriteY + isoH / 2 + sideH);
-          ctx.lineTo(drawX, spriteY + isoH + sideH);
-          ctx.lineTo(drawX - isoW / 2, spriteY + isoH / 2 + sideH);
+          ctx.lineTo(drawX + isoW / 2, baseSpriteY + isoH / 2 + sideH);
+          ctx.lineTo(drawX, baseSpriteY + isoH + sideH);
+          ctx.lineTo(drawX - isoW / 2, baseSpriteY + isoH / 2 + sideH);
           ctx.lineTo(drawX - isoW / 2, spriteY + isoH / 2);
           ctx.closePath();
-          ctx.fill();
+
+          if (paletteKey === 'colorful') {
+            ctx.fillStyle = `rgba(${cell.r}, ${cell.g}, ${cell.b}, 0.42)`;
+            ctx.fill();
+          }
+          if (totalLight < 0.98) {
+            ctx.fillStyle = `rgba(0, 0, 0, ${(1 - totalLight) * 0.72})`;
+            ctx.fill();
+          }
         }
       }
     }

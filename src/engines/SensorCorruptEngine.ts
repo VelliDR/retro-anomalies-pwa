@@ -96,7 +96,7 @@ export function processSensorCorruptPixels(
       }
     }
 
-    const noiseAmplitude = 380 * noiseIntensity * scaleFactor;
+    const noiseAmplitude = 380 * noiseIntensity;
     const thresholdOverdrive = Math.min(1.0, noiseIntensity * 0.9);
     const thresholdBitShift = noiseIntensity * 0.5;
 
@@ -159,7 +159,7 @@ export class SensorCorruptEngine implements IImageEngine<SensorCorruptParams> {
   ): HTMLCanvasElement {
     const w = sourceCanvas.width;
     const h = sourceCanvas.height;
-    const outCanvas = canvasPool.getCanvas('sensor_temp', w, h);
+    const outCanvas = canvasPool.getCanvas('sensor_temp', w, h, { willReadFrequently: true });
     const ctx = canvasPool.getContext2D(outCanvas);
     ctx.drawImage(sourceCanvas, 0, 0);
 
@@ -203,7 +203,7 @@ export class SensorCorruptEngine implements IImageEngine<SensorCorruptParams> {
     }
 
     imageData.data.set(processed);
-    const outCanvas = canvasPool.getCanvas('sensor_temp', w, h);
+    const outCanvas = canvasPool.getCanvas('sensor_temp', w, h, { willReadFrequently: true });
     const ctx = canvasPool.getContext2D(outCanvas);
     ctx.putImageData(imageData, 0, 0);
     return outCanvas;

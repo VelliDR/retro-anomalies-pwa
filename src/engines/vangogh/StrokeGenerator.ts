@@ -51,9 +51,10 @@ export function generateVanGoghStrokes(
   const tensorField: StructureTensorField = computeScharrStructureTensor(pixels, width, height, 512);
   const rng = createSeededRng(1889 + params.mode * 97 + params.stepSize * 13);
 
-  const stepSize = params.stepSize * scale;
+  const stepSize = Math.max(2, params.stepSize) * scale;
   const brushMin = params.brushMinLength * scale;
-  const brushMax = params.brushMaxLength * scale;
+  const brushMax = Math.max(brushMin, params.brushMaxLength * scale);
+  const densityScale = clamp(12 / Math.max(6, params.stepSize), 0.5, 2.0);
   const strokes: StrokeInstance[] = [];
 
   const layers = [
@@ -99,7 +100,13 @@ export function generateVanGoghStrokes(
   ] as const;
 
   for (const layer of layers) {
-    const seeds = generateStratifiedSeeds(width, height, layer.density, scale, rng);
+    const seeds = generateStratifiedSeeds(
+      width,
+      height,
+      layer.density * densityScale,
+      scale,
+      rng
+    );
 
     for (let i = 0; i < seeds.length; i++) {
       const seed = seeds[i]!;
